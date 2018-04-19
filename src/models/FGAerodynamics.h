@@ -227,6 +227,7 @@ public:
   } in;
 
 private:
+    public:
   enum eAxisType {atNone, atLiftDrag, atAxialNormal, atBodyXYZ} axisType;
   typedef std::map<std::string,int> AxisIndex;
   AxisIndex AxisIdx;

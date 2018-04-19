@@ -169,36 +169,68 @@ void FGInputSocket::Read(bool Holding)
         }
         socket->Reply("");
 
-      } else if (command == "get") {             // GET PROPERTY
+      }
+      else if (command == "get") {             // GET PROPERTY
 
-        if (argument.size() == 0) {
-          socket->Reply("No property argument supplied.\n");
-          break;
-        }
-        try {
-          node = PropertyManager->GetNode(argument);
-        } catch(...) {
-          socket->Reply("Badly formed property query\n");
-          break;
-        }
-
-        if (node == 0) {
-          socket->Reply("Unknown property\n");
-          break;
-        } else if (!node->hasValue()) {
-          if (Holding) { // if holding can query property list
-            string query = FDMExec->QueryPropertyCatalog(argument);
-            socket->Reply(query);
-          } else {
-            socket->Reply("Must be in HOLD to search properties\n");
+          if (argument.size() == 0) {
+              socket->Reply("No property argument supplied.\n");
+              break;
           }
-        } else {
-          ostringstream buf;
-          buf << argument << " = " << setw(12) << setprecision(6) << node->getDoubleValue() << endl;
-          socket->Reply(buf.str());
-        }
+          try {
+              node = PropertyManager->GetNode(argument);
+          }
+          catch (...) {
+              socket->Reply("Badly formed property query\n");
+              break;
+          }
 
-      } else if (command == "hold") {                  // PAUSE
+          if (node == 0) {
+              socket->Reply("Unknown property\n");
+              break;
+          }
+          else if (!node->hasValue()) {
+              //if (node->nChildren() > 0)
+              //{
+              //    std::string buf;
+              //    for (int i = 0; i < node->nChildren(); i++)
+              //    {
+              //        SGPropertyNode *child_node = node->getChild(i);
+              //        if (child_node)
+              //        {
+              //            buf += child_node->getName();
+              //            if (child_node->hasValue())
+              //            {
+              //                char temp[1230];
+              //                sprintf(temp, ",%1.9f", child_node->getDoubleValue());
+              //                buf += std::string(temp);
+              //            }
+              //            else
+              //                if (child_node->nChildren() > 0)
+              //                    buf += "/";
+              //            buf += "\n";
+              //        }
+              //    }
+              //    socket->Reply(buf.c_str());
+
+              //}
+              if (Holding) { // if holding can query property list
+                  if (argument == std::string("//"))
+                      argument = "/";
+                  string query = FDMExec->QueryPropertyCatalog(argument);
+                  socket->Reply(query);
+              }
+              else {
+                  socket->Reply("Must be in HOLD to search properties\n");
+              }
+          }
+          else {
+              ostringstream buf;
+              buf << argument << " = " << setw(12) << setprecision(6) << node->getDoubleValue() << endl;
+              socket->Reply(buf.str());
+          }
+
+      }
+      else if (command == "hold") {                  // PAUSE
 
         FDMExec->Hold();
         socket->Reply("");

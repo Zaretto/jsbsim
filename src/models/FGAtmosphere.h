@@ -219,6 +219,7 @@ public:
   } in;
 
 protected:
+    public:
   double    SLtemperature,    SLdensity,    SLpressure,    SLsoundspeed; // Sea level conditions
   double      Temperature,      Density,      Pressure,      Soundspeed; // Current actual conditions at altitude
   double   rSLtemperature,   rSLdensity,   rSLpressure,   rSLsoundspeed; // Reciprocal of sea level conditions

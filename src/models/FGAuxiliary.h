@@ -292,7 +292,7 @@ public:
     double PitotAngle;
   } in;
 
-private:
+public:
   double vcas, veas, vtrue;
   double pt, tat, tatc; // Don't add a getter for pt!
 
