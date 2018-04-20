@@ -266,41 +266,75 @@ bool FGAuxiliary::Run(bool Holding)
 
 void FGAuxiliary::UpdateWindMatrices(void)
 {
-  double ca, cb, sa, sb;
+    double ca, cb, sa, sb;
 
-  ca = cos(alpha);
-  sa = sin(alpha);
-  cb = cos(beta);
-  sb = sin(beta);
+    ca = cos(alpha);
+    sa = sin(alpha);
+    cb = cos(beta);
+    sb = sin(beta);
 
-  mTw2b(1,1) =  ca*cb;
-  mTw2b(1,2) = -ca*sb;
-  mTw2b(1,3) = -sa;
-  mTw2b(2,1) =  sb;
-  mTw2b(2,2) =  cb;
-  mTw2b(2,3) =  0.0;
-  mTw2b(3,1) =  sa*cb;
-  mTw2b(3,2) = -sa*sb;
-  mTw2b(3,3) =  ca;
+    mTw2b(1, 1) = ca*cb;
+    mTw2b(1, 2) = -ca*sb;
+    mTw2b(1, 3) = -sa;
+    mTw2b(2, 1) = sb;
+    mTw2b(2, 2) = cb;
+    mTw2b(2, 3) = 0.0;
+    mTw2b(3, 1) = sa*cb;
+    mTw2b(3, 2) = -sa*sb;
+    mTw2b(3, 3) = ca;
 
-  mTb2w = mTw2b.Transposed();
+    mTb2w = mTw2b.Transposed();
 
-  // The pitot frame is the same as the body frame except rotated about the
-  // Y axis by the pitot attachment angle.
+    // The pitot frame is the same as the body frame except rotated about the
+    // Y axis by the pitot attachment angle.
 
-  ca = cos(alpha + in.PitotAngle);
-  sa = sin(alpha + in.PitotAngle);
+    ca = cos(alpha + in.PitotAngle);
+    sa = sin(alpha + in.PitotAngle);
 
-  mTw2p(1,1) =  ca*cb;
-  mTw2p(1,2) = -ca*sb;
-  mTw2p(1,3) = -sa;
-  mTw2p(2,1) =  sb;
-  mTw2p(2,2) =  cb;
-  mTw2p(2,3) =  0.0;
-  mTw2p(3,1) =  sa*cb;
-  mTw2p(3,2) = -sa*sb;
-  mTw2p(3,3) =  ca;
+    mTw2p(1, 1) = ca*cb;
+    mTw2p(1, 2) = -ca*sb;
+    mTw2p(1, 3) = -sa;
+    mTw2p(2, 1) = sb;
+    mTw2p(2, 2) = cb;
+    mTw2p(2, 3) = 0.0;
+    mTw2p(3, 1) = sa*cb;
+    mTw2p(3, 2) = -sa*sb;
+    mTw2p(3, 3) = ca;
 
+    Re = Vt * in.Wingchord / in.KinematicViscosity;
+
+    double densityD2 = 0.5*in.Density;
+
+    Mach = Vt / in.SoundSpeed;
+    MachU = vMachUVW(eU) = vAeroUVW(eU) / in.SoundSpeed;
+    vMachUVW(eV) = vAeroUVW(eV) / in.SoundSpeed;
+    vMachUVW(eW) = vAeroUVW(eW) / in.SoundSpeed;
+
+    tat = in.Temperature*(1 + 0.2*Mach*Mach); // Total Temperature, isentropic flow
+    tatc = RankineToCelsius(tat);
+
+    vWindUVW(eU) = Vt;
+    vPitotUVW = mTw2p * vWindUVW;
+    Vpitot = vPitotUVW(eU);
+    if (Vpitot < 0.0)
+        Vpitot = 0.0;
+
+    MachPitot = Vpitot / in.SoundSpeed;
+    pt = PitotTotalPressure(MachPitot, in.Pressure);
+
+    if (abs(MachPitot) > 0.0) {
+        double pavc = 5.0*(pow(1.0 + pt*0.0680457, 0.28571) - 1.0);
+        if (pavc < 0)
+            pavc = 0.0;
+        vcas = 661.479*sqrt(abs(pavc));
+        vcas = VcalibratedFromMach(MachPitot, in.Pressure, in.PressureSL, in.DensitySL);
+        veas = sqrt(2 * qbar / in.DensitySL);
+        vtrue = 1116.43559 * Mach * sqrt(in.Temperature / 518.67);
+//        printf("Vpitot %f pavc %f, vcas %.1f, veas %.1f, vt %.1F\n", Vpitot,pavc,vcas,veas,vtrue);
+    }
+    else {
+        vcas = veas = vtrue = 0.0;
+    }
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

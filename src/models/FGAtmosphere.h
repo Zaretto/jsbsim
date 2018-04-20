@@ -188,7 +188,8 @@ public:
   /// @name Speed of sound access functions.
   //@{
   /// Returns the speed of sound in ft/sec.
-  virtual double GetSoundSpeed(void) const {return Soundspeed;}
+  virtual double GetSoundSpeed(void) const { return Soundspeed; }
+  virtual void SetSoundSpeed(double v) { Soundspeed = v; }
 
   /// Returns the speed of sound in ft/sec at a given altitude in ft.
   virtual double GetSoundSpeed(double altitude) const;
