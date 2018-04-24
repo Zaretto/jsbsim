@@ -569,7 +569,7 @@ public:
   void SetAltitudeASL(double altASL)
   {
     VState.vLocation.SetAltitudeASL(altASL);
-    UpdateVehicleState();
+//    UpdateVehicleState();
   }
   void SetAltitudeASLmeters(double altASL) { SetAltitudeASL(altASL/fttom); }
 
@@ -613,11 +613,11 @@ public:
     double DeltaT;
   } in;
 
+  struct VehicleState VState;
 private:
 
 // state vector
 
-  struct VehicleState VState;
 
   FGColumnVector3 vVel;
   FGMatrix33 Tec2b;
