@@ -1,0 +1,6 @@
+<map id="SetTemperatureSL" name="SetTemperatureSL">
+<area shape="rect" id="node2" href="$classJSBSim_1_1FGStandardAtmosphere.html#a99d8a1977d4edfc2f5c5871f43525ee3" title="Sets the temperature at the supplied altitude, if it is to be different than the standard temperature..." alt="" coords="184,31,299,57"/>
+<area shape="rect" id="node3" href="$classJSBSim_1_1FGStandardAtmosphere.html#abf48220ca0c338db70ce75caaf591a91" title="Convert a geometric altitude to a geopotential altitude. " alt="" coords="595,5,733,32"/>
+<area shape="rect" id="node4" href="$classJSBSim_1_1FGStandardAtmosphere.html#a1eb8fafb77f1d00679eee2538837151c" title="Returns the standard temperature in degrees Rankine at a specified altitude. " alt="" coords="379,31,515,57"/>
+<area shape="rect" id="node5" href="$classJSBSim_1_1FGStandardAtmosphere.html#af0d6708b2772ef2460c715d9157be869" title="Calculate (or recalculate) the atmospheric pressure breakpoints at the altitudes in the standard temp..." alt="" coords="347,81,546,108"/>
+</map>

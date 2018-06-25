@@ -1,0 +1,7 @@
+<map id="GetDensity" name="GetDensity">
+<area shape="rect" id="node2" href="$classJSBSim_1_1FGInitialCondition.html#a13d4b8fd402f41dcf6eef8ed0c11f435" title="Set equivalent airspeed initial condition in knots. " alt="" coords="142,5,325,46"/>
+<area shape="rect" id="node3" href="$classJSBSim_1_1FGInitialCondition.html#adb6fe57c0d1ce470a4d12b8e3054f75b" title="Sets the altitude above sea level initial condition in feet. " alt="" coords="142,70,325,111"/>
+<area shape="rect" id="node5" href="$classJSBSim_1_1FGInitialCondition.html#a38a4c348cd4c6d646909fb2882abe9d6" title="Gets the initial equivalent airspeed. " alt="" coords="142,135,325,177"/>
+<area shape="rect" id="node6" href="$classJSBSim_1_1FGOutputSocket.html#ad752fb6fee3d03568bb8717d046286bd" title="Generates the output. " alt="" coords="145,201,321,242"/>
+<area shape="rect" id="node4" href="$classJSBSim_1_1FGInitialCondition.html#a78752db06521e6974fad0089a5e31695" title="Sets the initial Altitude above ground level. " alt="" coords="374,70,557,111"/>
+</map>

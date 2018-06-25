@@ -1,0 +1,4 @@
+<map id="ResetSLTemperature" name="ResetSLTemperature">
+<area shape="rect" id="node2" href="$classJSBSim_1_1FGStandardAtmosphere.html#a319f3b800cb9b494befa279bb0a6f62f" title="Recalculate the lapse rate vectors when the temperature profile is altered in a way that would change..." alt="" coords="227,5,373,32"/>
+<area shape="rect" id="node3" href="$classJSBSim_1_1FGStandardAtmosphere.html#af0d6708b2772ef2460c715d9157be869" title="Calculate (or recalculate) the atmospheric pressure breakpoints at the altitudes in the standard temp..." alt="" coords="201,56,399,83"/>
+</map>

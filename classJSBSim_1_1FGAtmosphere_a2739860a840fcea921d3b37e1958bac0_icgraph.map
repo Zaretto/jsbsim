@@ -1,0 +1,10 @@
+<map id="GetTemperature" name="GetTemperature">
+<area shape="rect" id="node2" href="$classJSBSim_1_1FGAtmosphere.html#a4c497d810b0509f4743ec5acf449864c" title="Calculate the atmosphere for the given altitude. " alt="" coords="241,31,319,57"/>
+<area shape="rect" id="node5" href="$classJSBSim_1_1FGAtmosphere.html#ac5abd7e9eefca1228b3df387b4df4905" title="Returns the density in slugs/ft^3 at a given altitude in ft. " alt="" coords="236,81,324,108"/>
+<area shape="rect" id="node6" href="$classJSBSim_1_1FGAtmosphere.html#a375a584a39e50f1e7aa8369cf7649c67" title="Returns the speed of sound in ft/sec at a given altitude in ft. " alt="" coords="221,132,339,159"/>
+<area shape="rect" id="node7" href="$classJSBSim_1_1FGAtmosphere.html#a4214dbe844fb66d3c0121df4cb3ae3b2" title="Returns the actual, modeled sea level temperature in degrees Rankine. " alt="" coords="214,183,346,209"/>
+<area shape="rect" id="node8" href="$classJSBSim_1_1FGAtmosphere.html#a0028c18a3bb10d722e10c2172653f3f8" title="Returns the ratio of the at&#45;current&#45;altitude temperature as modeled over the sea level value..." alt="" coords="207,233,353,260"/>
+<area shape="rect" id="node9" href="$classJSBSim_1_1FGStandardAtmosphere.html#a8b6359271548980bcf2b4644c36a0a8a" title="Returns the pressure at a specified altitude in psf. " alt="" coords="171,285,389,326"/>
+<area shape="rect" id="node3" href="$classJSBSim_1_1FGAtmosphere.html#a35ac9aa2a24b4c76037dcc874cdfdcdd" title="Runs the atmosphere forces model; called by the Executive. " alt="" coords="438,5,485,32"/>
+<area shape="rect" id="node4" href="$classJSBSim_1_1FGStandardAtmosphere.html#aa943364614ced882fc8a26614575c0d4" title="Prints the U.S. Standard Atmosphere table. " alt="" coords="533,23,752,65"/>
+</map>
