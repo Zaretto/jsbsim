@@ -25,5 +25,5 @@ code without any dependencies on simgear
 #    define STL_FSTREAM    <fstream>
 #    define STL_IOSTREAM   <iostream>
 
-#define SG_LOG(type, level, message) (cout <<message << endl)
+#define SG_LOG(type, level, message) (std::cout <<message << std::endl)
 #define SG_USING_STD(X) using std::X
