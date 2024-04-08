@@ -35,34 +35,25 @@ HISTORY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <iostream>
-#include <sstream>
-
+#include "FGFDMExec.h"
 #include "FGPropeller.h"
 #include "input_output/FGXMLElement.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
 
-IDENT(IdSrc,"$Id: FGPropeller.cpp,v 1.58 2016/06/04 11:06:51 bcoconni Exp $");
-IDENT(IdHdr,ID_PROPELLER);
-
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-// This class currently makes certain assumptions when calculating torque and
-// p-factor. That is, that the axis of rotation is the X axis of the aircraft -
-// not just the X-axis of the engine/propeller. This may or may not work for a
-// helicopter.
 
 FGPropeller::FGPropeller(FGFDMExec* exec, Element* prop_element, int num)
                        : FGThruster(exec, prop_element, num)
 {
   Element *table_element, *local_element;
   string name="";
-  FGPropertyManager* PropertyManager = exec->GetPropertyManager();
+  auto PropertyManager = exec->GetPropertyManager();
 
   MaxPitch = MinPitch = P_Factor = Pitch = Advance = MinRPM = MaxRPM = 0.0;
   Sense = 1; // default clockwise rotation
@@ -77,11 +68,11 @@ FGPropeller::FGPropeller(FGFDMExec* exec, Element* prop_element, int num)
   Vinduced = 0.0;
 
   if (prop_element->FindElement("ixx"))
-    Ixx = max(prop_element->FindElementValueAsNumberConvertTo("ixx", "SLUG*FT2"), 0.001);
+    Ixx = max(prop_element->FindElementValueAsNumberConvertTo("ixx", "SLUG*FT2"), 1e-06);
 
   Sense_multiplier = 1.0;
-  if (prop_element->HasAttribute("version"))
-    if  (prop_element->GetAttributeValueAsNumber("version") > 1.0)
+  if (prop_element->HasAttribute("version")
+      && prop_element->GetAttributeValueAsNumber("version") > 1.0)
       Sense_multiplier = -1.0;
 
   if (prop_element->FindElement("diameter"))
@@ -116,14 +107,19 @@ FGPropeller::FGPropeller(FGFDMExec* exec, Element* prop_element, int num)
       } else if (name == "CP_MACH") {
         CpMach = new FGTable(PropertyManager, table_element);
       } else {
-        cerr << "Unknown table type: " << name << " in propeller definition." << endl;
+        FGXMLLogging log(fdmex->GetLogger(), table_element, LogLevel::ERROR);
+        log << "Unknown table type: " << name << " in propeller definition.\n";
       }
-    } catch (std::string& str) {
-      throw("Error loading propeller table:" + name + ". " + str);
+    } catch (BaseException& e) {
+      XMLLogException err(fdmex->GetLogger(), table_element);
+      err << "Error loading propeller table:" << name << ". " << e.what() << "\n";
+      throw err;
     }
   }
-  if( (cPower == 0) || (cThrust == 0)){
-      cerr << "Propeller configuration must contain C_THRUST and C_POWER tables!" << endl;
+  if( (cPower == nullptr) || (cThrust == nullptr)){
+    XMLLogException err(fdmex->GetLogger(), prop_element);
+    err << "Propeller configuration must contain C_THRUST and C_POWER tables!\n";
+    throw err;
   }
 
   local_element = prop_element->GetParent()->FindElement("sense");
@@ -136,7 +132,9 @@ FGPropeller::FGPropeller(FGFDMExec* exec, Element* prop_element, int num)
     P_Factor = local_element->GetDataAsNumber();
   }
   if (P_Factor < 0) {
-    cerr << "P-Factor value in propeller configuration file must be greater than zero" << endl;
+    XMLLogException err(fdmex->GetLogger(), local_element);
+    err << "P-Factor value in propeller configuration file must be greater than zero\n";
+    throw err;
   }
   if (prop_element->FindElement("ct_factor"))
     SetCtFactor( prop_element->FindElementValueAsNumber("ct_factor") );
@@ -167,9 +165,15 @@ FGPropeller::FGPropeller(FGFDMExec* exec, Element* prop_element, int num)
   property_name = base_property_name + "/constant-speed-mode";
   PropertyManager->Tie( property_name.c_str(), this, &FGPropeller::GetConstantSpeed,
                       &FGPropeller::SetConstantSpeed );
-  property_name = base_property_name + "/prop-induced-velocity_fps";
+  property_name = base_property_name + "/prop-induced-velocity_fps"; // [ft/sec]
   PropertyManager->Tie( property_name.c_str(), this, &FGPropeller::GetInducedVelocity,
                       &FGPropeller::SetInducedVelocity );
+  property_name = base_property_name + "/propeller-power-ftlbps"; // [ft-lbs/sec]
+  PropertyManager->Tie( property_name.c_str(), &PowerRequired );
+  property_name = base_property_name + "/propeller-torque-ftlb"; // [ft-lbs]
+  PropertyManager->Tie( property_name.c_str(), this, &FGPropeller::GetTorque);
+  property_name = base_property_name + "/propeller-sense";
+  PropertyManager->Tie( property_name.c_str(), &Sense );
 
   Debug(0);
 }
@@ -187,6 +191,14 @@ FGPropeller::~FGPropeller()
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+void FGPropeller::ResetToIC(void)
+{
+  FGThruster::ResetToIC();
+  Vinduced = 0.0;
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 //
 // We must be getting the aerodynamic velocity here, NOT the inertial velocity.
 // We need the velocity with respect to the wind.
@@ -199,10 +211,16 @@ FGPropeller::~FGPropeller()
 
 double FGPropeller::Calculate(double EnginePower)
 {
-  FGColumnVector3 localAeroVel = Transform().Transposed() * in.AeroUVW;
+  FGColumnVector3 vDXYZ = MassBalance->StructuralToBody(vXYZn);
+  const FGMatrix33& mT = Transform();
+  // Local air velocity is obtained from Stevens & Lewis' "Aircraft Control and
+  // Simualtion (3rd edition)" eqn 8.2-1
+  // Variables in.AeroUVW and in.AeroPQR include the wind and turbulence effects
+  // as computed by FGAuxiliary.
+  FGColumnVector3 localAeroVel = mT.Transposed() * (in.AeroUVW + in.AeroPQR*vDXYZ);
   double omega, PowerAvailable;
 
-  double Vel = localAeroVel(eU) + Vinduced;
+  double Vel = localAeroVel(eU);
   double rho = in.Density;
   double RPS = RPM/60.0;
 
@@ -211,10 +229,10 @@ double FGPropeller::Calculate(double EnginePower)
   double Vtip = RPS * Diameter * M_PI;
   HelicalTipMach = sqrt(Vtip*Vtip + Vel*Vel) / in.Soundspeed;
 
-  PowerAvailable = EnginePower - GetPowerRequired();
-
-  if (RPS > 0.0) J = Vel / (Diameter * RPS); // Calculate J normally
+  if (RPS > 0.01) J = Vel / (Diameter * RPS); // Calculate J normally
   else           J = Vel / Diameter;
+
+  PowerAvailable = EnginePower - GetPowerRequired();
 
   if (MaxPitch == MinPitch) {    // Fixed pitch prop
     ThrustCoeff = cThrust->GetValue(J);
@@ -236,12 +254,12 @@ double FGPropeller::Calculate(double EnginePower)
   // Since Thrust and Vel can both be negative we need to adjust this formula
   // To handle sign (direction) separately from magnitude.
   double Vel2sum = Vel*abs(Vel) + 2.0*Thrust/(rho*Area);
-  
+
   if( Vel2sum > 0.0)
     Vinduced = 0.5 * (-Vel + sqrt(Vel2sum));
   else
     Vinduced = 0.5 * (-Vel - sqrt(-Vel2sum));
-    
+
   // P-factor is simulated by a shift of the acting location of the thrust.
   // The shift is a multiple of the angle between the propeller shaft axis
   // and the relative wind that goes through the propeller disk.
@@ -249,7 +267,10 @@ double FGPropeller::Calculate(double EnginePower)
     double tangentialVel = localAeroVel.Magnitude(eV, eW);
 
     if (tangentialVel > 0.0001) {
-      double angle = atan2(tangentialVel, localAeroVel(eU));
+      // The angle made locally by the air flow with respect to the propeller
+      // axis is influenced by the induced velocity. This attenuates the
+      // influence of a string cross wind and gives a more realistic behavior.
+      double angle = atan2(tangentialVel, Vel+Vinduced);
       double factor = Sense * P_Factor * angle / tangentialVel;
       SetActingLocationY( GetLocationY() + factor * localAeroVel(eW));
       SetActingLocationZ( GetLocationZ() + factor * localAeroVel(eV));
@@ -259,16 +280,15 @@ double FGPropeller::Calculate(double EnginePower)
   omega = RPS*2.0*M_PI;
 
   vFn(eX) = Thrust;
+  vTorque(eX) = -Sense*EnginePower / max(0.01, omega);
 
   // The Ixx value and rotation speed given below are for rotation about the
   // natural axis of the engine. The transform takes place in the base class
   // FGForce::GetBodyForces() function.
 
-  vH(eX) = Ixx*omega*Sense*Sense_multiplier;
-  vH(eY) = 0.0;
-  vH(eZ) = 0.0;
+  FGColumnVector3 vH(Ixx*omega*Sense*Sense_multiplier, 0.0, 0.0);
 
-  if (omega > 0.0) ExcessTorque = PowerAvailable / omega;
+  if (omega > 0.01) ExcessTorque = PowerAvailable / omega;
   else             ExcessTorque = PowerAvailable / 1.0;
 
   RPM = (RPS + ((ExcessTorque / Ixx) / (2.0 * M_PI)) * in.TotalDeltaT) * 60.0;
@@ -277,7 +297,7 @@ double FGPropeller::Calculate(double EnginePower)
 
   // Transform Torque and momentum first, as PQR is used in this
   // equation and cannot be transformed itself.
-  vMn = in.PQR*(Transform()*vH) + Transform()*vTorque;
+  vMn = in.PQRi*(mT*vH) + mT*vTorque;
 
   return Thrust; // return thrust in pounds
 }
@@ -286,13 +306,7 @@ double FGPropeller::Calculate(double EnginePower)
 
 double FGPropeller::GetPowerRequired(void)
 {
-  double cPReq, J;
-  double rho = in.Density;
-  double Vel = in.AeroUVW(eU) + Vinduced;
-  double RPS = RPM / 60.0;
-
-  if (RPS != 0.0) J = Vel / (Diameter * RPS);
-  else            J = Vel / Diameter;
+  double cPReq;
 
   if (MaxPitch == MinPitch) {   // Fixed pitch prop
     cPReq = cPower->GetValue(J);
@@ -303,7 +317,7 @@ double FGPropeller::GetPowerRequired(void)
 
       // do normal calculation when propeller is neither feathered nor reversed
       // Note:  This method of feathering and reversing was added to support the
-      //        turboprop model.  It's left here for backward compatablity, but
+      //        turboprop model.  It's left here for backward compatiblity, but
       //        now feathering and reversing should be done in Manual Pitch Mode.
       if (!Feathered) {
         if (!Reversed) {
@@ -349,10 +363,10 @@ double FGPropeller::GetPowerRequired(void)
   // Apply optional Mach effects from CP_MACH table
   if (CpMach) cPReq *= CpMach->GetValue(HelicalTipMach);
 
-  double local_RPS = RPS < 0.01 ? 0.01 : RPS; 
+  double RPS = RPM / 60.0;
+  double local_RPS = RPS < 0.01 ? 0.01 : RPS;
 
-  PowerRequired = cPReq*local_RPS*local_RPS*local_RPS*D5*rho;
-  vTorque(eX) = -Sense*PowerRequired / (local_RPS*2.0*M_PI);
+  PowerRequired = cPReq*local_RPS*local_RPS*local_RPS*D5*in.Density;
 
   return PowerRequired;
 }
@@ -361,12 +375,13 @@ double FGPropeller::GetPowerRequired(void)
 
 FGColumnVector3 FGPropeller::GetPFactor() const
 {
-  double px=0.0, py, pz;
+  // These are moments in lbf per ft : the lever arm along Z generates a moment
+  // along the pitch direction.
+  double p_pitch = Thrust * Sense * (GetActingLocationZ() - GetLocationZ()) / 12.0;
+  // The lever arm along Y generates a moment along the yaw direction.
+  double p_yaw = Thrust * Sense * (GetActingLocationY() - GetLocationY()) / 12.0;
 
-  py = Thrust * Sense * (GetActingLocationY() - GetLocationY()) / 12.0;
-  pz = Thrust * Sense * (GetActingLocationZ() - GetLocationZ()) / 12.0;
-
-  return FGColumnVector3(px, py, pz);
+  return FGColumnVector3(0.0, p_pitch, p_yaw);
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -429,39 +444,22 @@ void FGPropeller::Debug(int from)
 
   if (debug_lvl & 1) { // Standard console startup message output
     if (from == 0) { // Constructor
-      cout << "\n    Propeller Name: " << Name << endl;
-      cout << "      IXX = " << Ixx << endl;
-      cout << "      Diameter = " << Diameter << " ft." << endl;
-      cout << "      Number of Blades  = " << numBlades << endl;
-      cout << "      Gear Ratio  = " << GearRatio << endl;
-      cout << "      Minimum Pitch  = " << MinPitch << endl;
-      cout << "      Maximum Pitch  = " << MaxPitch << endl;
-      cout << "      Minimum RPM  = " << MinRPM << endl;
-      cout << "      Maximum RPM  = " << MaxRPM << endl;
-// Tables are being printed elsewhere...
-//      cout << "      Thrust Coefficient: " <<  endl;
-//      cThrust->Print();
-//      cout << "      Power Coefficient: " <<  endl;
-//      cPower->Print();
-//      cout << "      Mach Thrust Coefficient: " <<  endl;
-//      if(CtMach)
-//      {
-//          CtMach->Print();
-//      } else {
-//          cout << "        NONE" <<  endl;
-//      }
-//      cout << "      Mach Power Coefficient: " <<  endl;
-//      if(CpMach)
-//      {
-//          CpMach->Print();
-//      } else {
-//          cout << "        NONE" <<  endl;
-//      }
+      FGLogging log(fdmex->GetLogger(), LogLevel::DEBUG);
+      log << "\n    Propeller Name: " << Name << "\n";
+      log << "      IXX = " << Ixx << "\n";
+      log << "      Diameter = " << Diameter << " ft." << "\n";
+      log << "      Number of Blades  = " << numBlades << "\n";
+      log << "      Gear Ratio  = " << GearRatio << "\n";
+      log << "      Minimum Pitch  = " << MinPitch << "\n";
+      log << "      Maximum Pitch  = " << MaxPitch << "\n";
+      log << "      Minimum RPM  = " << MinRPM << "\n";
+      log << "      Maximum RPM  = " << MaxRPM << "\n";
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGPropeller" << endl;
-    if (from == 1) cout << "Destroyed:    FGPropeller" << endl;
+    FGLogging log(fdmex->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGPropeller\n";
+    if (from == 1) log << "Destroyed:    FGPropeller\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -471,8 +469,6 @@ void FGPropeller::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

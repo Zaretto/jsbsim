@@ -7,21 +7,21 @@
  ------------- Copyright (C) 2000 -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -38,16 +38,13 @@ INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 #include "FGDeadBand.h"
-#include "input_output/FGXMLElement.h"
-#include "input_output/FGPropertyManager.h"
-#include <iostream>
+#include "models/FGFCS.h"
+#include "math/FGParameterValue.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGDeadBand.cpp,v 1.14 2014/01/13 10:46:07 ehofman Exp $");
-IDENT(IdHdr,ID_DEADBAND);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -55,33 +52,25 @@ CLASS IMPLEMENTATION
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-FGDeadBand::FGDeadBand(FGFCS* fcs, Element* element) : FGFCSComponent(fcs, element)
+FGDeadBand::FGDeadBand(FGFCS* fcs, Element* element)
+  : FGFCSComponent(fcs, element)
 {
-  string width_string;
-
-  WidthPropertyNode = 0;
-  WidthPropertySign = 1.0;
+  Width = nullptr;
   gain = 1.0;
-  width = 0.0;
 
-  if ( element->FindElement("width") ) {
-    width_string = element->FindElementValue("width");
-    if (!is_number(width_string)) { // property
-      if (width_string[0] == '-') {
-       WidthPropertySign = -1.0;
-       width_string.erase(0,1);
-      }
-      WidthPropertyNode = PropertyManager->GetNode(width_string);
-    } else {
-      width = element->FindElementValueAsNumber("width");
-    }
-  }
+  CheckInputNodes(1, 1, element);
 
-  if (element->FindElement("gain")) {
+  auto PropertyManager = fcs->GetPropertyManager();
+  Element* width_element = element->FindElement("width");
+  if (width_element)
+    Width = new FGParameterValue(width_element, PropertyManager);
+  else
+    Width = new FGRealValue(0.0);
+
+  if (element->FindElement("gain"))
     gain = element->FindElementValueAsNumber("gain");
-  }
 
-  FGFCSComponent::bind();
+  bind(element, PropertyManager.get());
   Debug(0);
 }
 
@@ -94,24 +83,22 @@ FGDeadBand::~FGDeadBand()
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-bool FGDeadBand::Run(void )
+bool FGDeadBand::Run(void)
 {
-  Input = InputNodes[0]->getDoubleValue() * InputSigns[0];
+  Input = InputNodes[0]->getDoubleValue();
 
-  if (WidthPropertyNode != 0) {
-    width = WidthPropertyNode->getDoubleValue() * WidthPropertySign;
-  }
+  double HalfWidth = 0.5*Width;
 
-  if (Input < -width/2.0) {
-    Output = (Input + width/2.0)*gain;
-  } else if (Input > width/2.0) {
-    Output = (Input - width/2.0)*gain;
+  if (Input < -HalfWidth) {
+    Output = (Input + HalfWidth)*gain;
+  } else if (Input > HalfWidth) {
+    Output = (Input - HalfWidth)*gain;
   } else {
     Output = 0.0;
   }
 
   Clip();
-  if (IsOutput) SetOutput();
+  SetOutput();
 
   return true;
 }
@@ -124,7 +111,7 @@ bool FGDeadBand::Run(void )
 //       variable is not set, debug_lvl is set to 1 internally
 //    0: This requests JSBSim not to output any messages
 //       whatsoever.
-//    1: This value explicity requests the normal JSBSim
+//    1: This value explicitly requests the normal JSBSim
 //       startup messages
 //    2: This value asks for a message to be printed out when
 //       a class is instantiated
@@ -141,22 +128,19 @@ void FGDeadBand::Debug(int from)
 
   if (debug_lvl & 1) { // Standard console startup message output
     if (from == 0) { // Constructor
-      cout << "      INPUT: " << InputNodes[0]->GetName() << endl;
-      if (WidthPropertyNode != 0) {
-        cout << "      DEADBAND WIDTH: " << WidthPropertyNode->GetName() << endl;
-      } else {
-        cout << "      DEADBAND WIDTH: " << width << endl;
-      }
-      cout << "      GAIN: " << gain << endl;
-      if (IsOutput) {
-        for (unsigned int i=0; i<OutputNodes.size(); i++)
-          cout << "      OUTPUT: " << OutputNodes[i]->getName() << endl;
-      }
+      FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
+      log << "      INPUT: " << InputNodes[0]->GetName() << "\n";
+      log << "      DEADBAND WIDTH: " << Width->GetName() << "\n";
+      log << "      GAIN: " << fixed << setprecision(4) << gain << "\n";
+
+      for (auto node: OutputNodes)
+        log << "      OUTPUT: " << node->getNameString() << "\n";
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGDeadBand" << endl;
-    if (from == 1) cout << "Destroyed:    FGDeadBand" << endl;
+    FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGDeadBand\n";
+    if (from == 1) log << "Destroyed:    FGDeadBand\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -166,8 +150,6 @@ void FGDeadBand::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

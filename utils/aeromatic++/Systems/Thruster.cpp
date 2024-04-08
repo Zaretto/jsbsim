@@ -12,12 +12,12 @@
 // modify it under the terms of the GNU Lesser General Public
 // License as published by the Free Software Foundation; either
 // version 2.1 of the License, or (at your option) any later version.
-// 
+//
 // This library is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 // Lesser General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Lesser General Public
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA
@@ -42,9 +42,8 @@ Thruster::Thruster(Propulsion *p) :
 
 Thruster::~Thruster()
 {
-    std::vector<Param*>::iterator it;
-    for(it = _inputs.begin(); it != _inputs.end(); ++it) {
-        delete *it;
+    for (auto it : _inputs) {
+        delete it.second;
     }
 }
 
@@ -71,13 +70,16 @@ std::string Direct::thruster()
 }
 
 
-Nozzle::Nozzle(Propulsion *p) : Thruster(p),
-    _diameter(3.25f)
+Nozzle::Nozzle(Propulsion *p) : Thruster(p)
 {
+    bool& convert = _propulsion->_aircraft->_metric;
+
     strCopy(_thruster_name, "my_nozzle");
 
-    _inputs.push_back(new Param("Nozzle name", "The name is used for the configuration file name", _thruster_name));
-    _inputs.push_back(new Param("Nozzle diameter", "Nozzle diameter influences the nozzle area and exit pressure", _diameter, _propulsion->_aircraft->_metric, LENGTH));
+    _inputs_order.push_back("nozzleName");
+    _inputs["nozzleName"] = new Param("Nozzle name", "The name is used for the configuration file name", _thruster_name);
+    _inputs_order.push_back("nozzleDiameter");
+    _inputs["nozzleDiameter"] = new Param("Nozzle diameter", "Nozzle diameter influences the nozzle area and exit pressure", _diameter, convert, LENGTH);
 }
 
 std::string Nozzle::thruster()
@@ -105,20 +107,18 @@ std::string Nozzle::thruster()
 
 #define NUM_PROP_PITCHES	6
 #define NUM_ELEMENTS		12
-Propeller::Propeller(Propulsion *p) : Thruster(p),
-    _fixed_pitch(true),
-    _diameter(8.0f),
-    _max_rpm(2100.0f),
-    _max_chord(0.0f),
-    _pitch(45.0f),
-    _ixx(0.0f),
-    _pitch_levels(0)
+Propeller::Propeller(Propulsion *p) : Thruster(p)
 {
+    bool& convert = _propulsion->_aircraft->_metric;
+
     strCopy(_thruster_name, "my_propeller");
 
-    _inputs.push_back(new Param("Thruster name", "The name is used for the configuration file name", _thruster_name));
-    _inputs.push_back(new Param("Propeller diameter", "Propeller diameter is critical for a good thrust estimation", _diameter, _propulsion->_aircraft->_metric, LENGTH));
-    _inputs.push_back(new Param("Is the propeller fixed pitch?", "Fixed pitch propellers do not have any mechanics to alter the pitch angle", _fixed_pitch));
+    _inputs_order.push_back("thrusterName");
+    _inputs["thrusterName"] = new Param("Thruster name", "The name is used for the configuration file name", _thruster_name);
+    _inputs_order.push_back("propellerDiameter");
+    _inputs["propellerDiameter"] = new Param("Propeller diameter", "Propeller diameter is critical for a good thrust estimation", _diameter, convert, LENGTH);
+    _inputs_order.push_back("propellerFixedPitch");
+    _inputs["propellerFixedPitch"] = new Param("Is the propeller fixed pitch?", "Fixed pitch propellers do not have any mechanics to alter the pitch angle", _fixed_pitch);
 }
 
 /**
@@ -138,18 +138,24 @@ Propeller::Propeller(Propulsion *p) : Thruster(p),
  * Walnut:	 35
  * Oak:		 46
  * Aluminum:	167
+ *
+ * The code is based on:
+ *   PROPELLER BLADE ELEMENT MOMENTUM THEORY WITH VORTEX WAKE DEFLECTION
+ *   M. K. Rwigema, 2010
+ *   School of Mechanical, Industrial and Aeronautical Engineering
+ *   http://www.icas.org/ICAS_ARCHIVE/ICAS2010/PAPERS/434.PDF
  */
 void  Propeller::bladeElement()
 {
-    const float Y = 167.0f;	// Specific Weight of aluminum
-    const float rho = 1.225f;
-    const float Cf = 0.006f;	// skin Friction Coefficient
-    const float k1 = 0.2f;	// correction factor for airfoil thickness
+    const float Cf = 0.006f;	  // skin Friction Coefficient
+    const float k1 = 0.2f;	  // correction factor for airfoil thickness
 
-    float RPM = _engine_rpm;
+    float Y = _specific_weight;
+    float density = _density_factor;
+    float RPM = _max_rpm;
     float D = _diameter;
     float B = _blades;
-    float R = D/2.0f;
+    float R = 0.5f*D;
 
     if (_max_chord == 0) {
         _max_chord = 0.76f*sqrtf(R/B);
@@ -159,8 +165,8 @@ void  Propeller::bladeElement()
 
     float xt = R;
     float xs = R/NUM_ELEMENTS;
-    float hub = atanf(_pitch/(2.0f*PI*xs*FEET_TO_INCH))*RAD_TO_DEG;
-    float tip = atanf(_pitch/(2.0f*PI*xt*FEET_TO_INCH))*RAD_TO_DEG;
+    float hub = 0.5f*PI*atanf(_pitch/(2.0f*PI*xs*FEET_TO_INCH))*RAD_TO_DEG;
+    float tip = 0.5f*PI*atanf(_pitch/(2.0f*PI*xt*FEET_TO_INCH))*RAD_TO_DEG;
 
     float n = RPM/60.0f;
     float n2 = n*n;
@@ -197,12 +203,16 @@ void  Propeller::bladeElement()
 
                 float r = rad/xt;
                 float x = 1.0f - r;
-                float chord=_max_chord*(0.55f+0.7f*(pow(r,0.25f)-pow(r,5.0f)));
-                float TC = max_thickness*(1.0f-0.99f*powf(r,0.05f))/chord;
-                float CC = max_camber*(1.0f-0.99f*powf(x,0.05f))/chord;
+
+                float crd = 0.055f + powf(x,0.1f) - powf(x,10.0f);
+                float toc = 0.03f + 1.374f*powf(x,4.0f);
+                float tw = 0.25f + 0.84f*powf(x,1.15f);
+                float chord =_max_chord*crd;
+                float TC = max_thickness*toc/chord;
+                float CC = max_camber*tw;
+
                 float AR = rstep/chord;
                 float PAR = PI*AR;
-
                 float eff = 0.71 + (i*0.23f/NUM_ELEMENTS);
                 float CL0 = 4.0f*PI*CC;
                 float CLa = PAR/(1.0f + sqrtf(1.0f + 0.25f*AR*AR));
@@ -227,11 +237,11 @@ void  Propeller::bladeElement()
 
                     // Blade element momentum theory
                     float solidity = B*chord/(PI*R);
-                    DtDr = solidity*PI*rho*V0*V0/(sphi*sphi)*rad*CY;
-                    DqDr = solidity*PI*rho*V0*V0/(sphi*sphi)*rad*rad*CX;
+                    DtDr = solidity*PI*RHO*V0*V0/(sphi*sphi)*rad*CY;
+                    DqDr = solidity*PI*RHO*V0*V0/(sphi*sphi)*rad*rad*CX;
 
-                    tem1 = DtDr/(4.0f*PI*rad*rho*V*V*(1.0f+a));
-                    tem2 = DqDr/(4.0f*PI*rad*rad*rad*rho*V*(1.0f+a)*omega);
+                    tem1 = DtDr/(4.0f*PI*rad*RHO*V*V*(1.0f+a));
+                    tem2 = DqDr/(4.0f*PI*rad*rad*rad*RHO*V*(1.0f+a)*omega);
                     anew = 0.5f*(a+tem1);
                     bnew = 0.5f*(b+tem2);
                     if (fabsf(anew-a) < 1.0e-5f && fabsf(bnew-b) < 1.0e-5f) {
@@ -249,14 +259,14 @@ void  Propeller::bladeElement()
                 thrust += DtDr*rstep;
                 torque += DqDr*rstep;
 
-                float V = PI*chord*(chord*TC)*rstep;
-                float m = B*V*Y*LB_TO_SLUGS;
+                float V = PI*chord*(chord*TC)*rstep*density;
+                float m = V*Y*LB_TO_SLUGS;
                 _ixx += m*rad*rad;
             }
 
-            float CT = thrust/(rho*n2*D4);
-            float CQ = torque/(rho*n2*D5);
-            float CP = 2.0f*PI*CQ;
+            float CT = thrust/(RHO*n2*D4);
+            float CQ = torque/(RHO*n2*D5);
+            float CP = PI*CQ;
 
             _performance_t entry(J, CT, CP);
             _performance.push_back(entry);
@@ -282,38 +292,61 @@ void Propeller::set_thruster(float mrpm)
     _max_rpm = 18763.0f / _diameter;
     _gear_ratio = _MAX(_engine_rpm / _max_rpm, 1.0f);
 
-    float max_rps = _max_rpm / 60.0f;
-    float rps2 = max_rps * max_rps;
-    float rps3 = rps2 * max_rps;
-    float d4 = _diameter * _diameter * _diameter * _diameter;
-    float d5 = d4 * _diameter;
-    float rho = 0.002378f;
+    float n = _max_rpm/60.0f;
+    float n2 = n*n;
+    float D = _diameter;
+    float D4 = D*D*D*D;
+    float D5 = D4*D;
 
     // power and thrust coefficients at design point
     // for fixed pitch design point is beta=22, J=0.2
     // for variable pitch design point is beta=15, j=0
-    _Cp0 = _propulsion->_power * 550.0f / rho / rps3 / d5;
+    _Cp0 = _propulsion->_power * 550.0f / RHO / n2 / D5;
     if (_fixed_pitch == false)
     {
         _Ct0 = _Cp0 * 2.33f;
-        _static_thrust = _Ct0 * rho * rps2 * d4;
+        _static_thrust = _Ct0 * RHO * n2 * D4;
     } else {
-        float rpss = powf(_propulsion->_power * 550.0f / 1.025f / _Cp0 / rho / d5, 0.3333f);
-        _Ct0 = _Cp0 * 1.4f;
-        _static_thrust = 1.09f * _Ct0 * rho * rpss * rpss * d4;
+        _Ct0 = _Cp0 * 2.33f; // 1.4f;
+        _static_thrust = _Ct0 * RHO * n2 * D4;
     }
 
     // estimate the number of blades
-    if (_Cp0 < 0.035f) {
-      _blades = 2;
-    } else if (_Cp0 > 0.280f) {
-        _blades = 8;
-    } else if (_Cp0 > 0.140f) {
-      _blades = 6;
-    } else if (_Cp0 > 0.070f) {
-      _blades = 4;
+    if (_static_thrust < 100000.0f)
+    {
+        _blades = 2;
+        if (_static_thrust <  50000.0f)
+        {
+            _density_factor = 1.0f;
+            _specific_weight = 116.0f;	// wood
+        }
+        else
+        {
+            _density_factor = 0.2f;
+            _specific_weight = 172.0f;	// aluminum
+        }
+    }
+    else if (_static_thrust < 175000.0f)
+    {
+        _blades = 3;
+        _density_factor = 0.2f;
+        _specific_weight = 172.0f;	// aluminum
+    }
+    else if (_static_thrust < 200000.0f)
+    {
+        _blades = 4;			// aluminum
+        _density_factor = 0.2f;
+        _specific_weight = 172.0f;
+    }
+    else if (_static_thrust < 400000.0f)
+    {
+        _blades = 6;
+        _density_factor = 0.2f;
+        _specific_weight = 172.0f;	// aluminum
     } else {
-      _blades = 3;
+        _blades = 8;
+        _density_factor = 0.1f;
+        _specific_weight = 100.0f;	// carbon fiber
     }
 
     // Thruster effects on coefficients
@@ -347,6 +380,11 @@ void Propeller::set_thruster(float mrpm)
     }
 
     bladeElement();
+
+    _max_thrust = _fixed_pitch ? _performance[0].CT
+                          : _performance[_performance.size()/_pitch_levels].CT;
+    _max_thrust *= RHO * n2 * D4;
+    _max_torque = -RHO * _ixx*(2.0f*PI*_max_rpm);
 }
 
 std::string Propeller::lift()
@@ -397,12 +435,13 @@ std::string Propeller::pitch()
     float lh = aircraft->_htail.arm;
     float Sh = aircraft->_htail.area;
     float cbarw = aircraft->_wing.chord_mean;
-    
+
     float Knp = aircraft->_no_engines;
     if (Knp > 3.0f) Knp = 2.0f;
     Knp /= aircraft->_no_engines;
 
-    float pfact = -Knp*lh*Sh/cbarw/Sw;
+    float pfact = Knp*lh*Sh/cbarw/Sw;
+    if (aircraft->_cg_loc[X] > aircraft->_aero_rp[X]) pfact *= -1.0f;
 
     float Cm0 = _dCLT0*pfact;
     float Cmmax = _dCLTmax*pfact;
@@ -450,7 +489,7 @@ std::string Propeller::roll()
 
     // http://www.princeton.edu/~stengel/MAE331Lecture5.pdf
     float dClT = (_dCLTalpha/2.0f)*((1.0f-k*k)/3.0);
-    
+
     file << std::setprecision(4) << std::fixed << std::showpoint;
     file << "    <function name=\"aero/moment/Roll_differential_propwash\">" << std::endl;
     file << "       <description>Roll moment due to differential propwash</description>" << std::endl;
@@ -474,6 +513,7 @@ std::string Propeller::roll()
 std::string Propeller::thruster()
 {
 //  PistonEngine *engine = (PistonEngine*)_engine;
+    bool& convert = _propulsion->_aircraft->_metric;
     std::stringstream file;
 
     file << "<!-- Generated by Aero-Matic v " << AEROMATIC_VERSION_STR << std::endl;
@@ -483,26 +523,27 @@ std::string Propeller::thruster()
     file << "    Inputs:" << std::endl;
     file << "           horsepower: " << _propulsion->_power << std::endl;
     file << "       max engine rpm: " << _engine_rpm << std::endl;
-    file << "   prop diameter (ft): " << _diameter << std::endl;
-    file << "      prop chord (ft): " << _max_chord << std::endl;
-    file << "                pitch: " << (_fixed_pitch ? "fixed" : "variable") << " at " << _pitch << " inch" << std::endl;
+    file << "        prop diameter: " << _diameter << " " << _inputs["propellerDiameter"]->get_unit(false, LENGTH, convert) << std::endl;
+    file << "           prop chord: " << _max_chord << " " << _inputs["propellerDiameter"]->get_unit(false, LENGTH, convert) << std::endl;
+    file << "                pitch: " << (_fixed_pitch ? "fixed" : "variable") << " at " << _pitch << " degrees" << std::endl;
     file << std::endl;
     file << "    Outputs:" << std::endl;
     file << "         max prop rpm: " << _max_rpm << std::endl;
     file << "           gear ratio: " << _gear_ratio << std::endl;
     file << "                  Cp0: " << _Cp0 << std::endl;
     file << "                  Ct0: " << _Ct0 << std::endl;
-    file << "  static thrust (lbs): " << _static_thrust << std::endl;
+    file << "  static thrust (lbs): " << std::fixed << std::setprecision(1) << _static_thrust << std::endl;
+    file << "    max. thrust (lbs): " << std::fixed <<  std::setprecision(1) << _max_thrust << std::endl;
     file << "-->" << std::endl;
     file << std::endl;
 
     file << "<propeller version=\"1.01\" name=\"prop\">" << std::endl;
     file << "  <ixx> " << _ixx * _blades << " </ixx>" << std::endl;
-    file << "  <diameter unit=\"IN\"> " << (_diameter * FEET_TO_INCH) << " </diameter>" << std::endl;
+    file << "  <diameter unit=\"" << Param::get_unit(true, LENGTH, convert) << "\"> " << Param::get(_diameter, LENGTH, convert) << " </diameter>" << std::endl;
     file << "  <numblades> " << _blades << " </numblades>" << std::endl;
     file << "  <gearratio> " << _gear_ratio << " </gearratio>" << std::endl;
-    file << "  <cp_factor> 1.00 </cp_factor>" << std::endl;
-    file << "  <ct_factor> " << _blades << " </ct_factor> <!-- set to match the number of blades -->" << std::endl;
+//  file << "  <cp_factor> 1.00 </cp_factor>" << std::endl;
+//  file << "  <ct_factor> " << _blades << " </ct_factor> <!-- set to match the number of blades -->" << std::endl;
 
     if(_fixed_pitch == false)
     {
@@ -616,6 +657,26 @@ std::string Propeller::thruster()
     return file.str();
 }
 
+std::string Propeller::json()
+{
+    std::stringstream file;
+
+    file.precision(1);
+    file.flags(std::ios::left);
+    file << std::fixed << std::showpoint;
+
+    std::string param  = "    \"FT_max\"";
+    file << std::setw(14) << param << ": " << _max_thrust << "," << std::endl;
+
+    param  = "    \"MT_max\"";
+    file << std::setw(14) << param << ": " << _max_torque << "," << std::endl;
+
+    param  = "    \"rpm_max\"";
+    file << std::setw(14) << param << ": " << _max_rpm;
+
+    return file.str();
+}
+
 // ---------------------------------------------------------------------------
 
 float const Propeller::_CL_t[180] = {
@@ -627,186 +688,186 @@ float const Propeller::_CL_t[180] = {
     -0.05, -0.185, -0.32, -0.45, -0.575, -0.67, -0.76, -0.85, -0.93, -0.98,
     -0.9, -0.77, -0.67, -0.635, -0.68, -0.85, -0.66, 0.0
 #else
-    0.2500,
-0.3800,
-0.5100,
-0.6400,
-0.7700,
-0.9000,
-1.0000,
-1.1000,
-1.2000,
-1.3000,
-1.4000,
-1.4600,
-1.3500,
-1.2800,
-1.0000,
-0.8000,
-0.7900,
-0.7800,
-0.7700,
-0.7600,
-0.7500,
-0.7835,
-0.8085,
-0.8320,
-0.8540,
-0.8744,
-0.8933,
-0.9106,
-0.9264,
-0.9406,
-0.9532,
-0.9643,
-0.9739,
-0.9819,
-0.9884,
-0.9935,
-0.9971,
-0.9992,
-1.0000,
-0.9994,
-0.9974,
-0.9942,
-0.9897,
-0.9839,
-0.9770,
-0.9689,
-0.9597,
-0.9495,
-0.9382,
-0.9260,
-0.9128,
-0.8987,
-0.8838,
-0.8680,
-0.8515,
-0.8343,
-0.8163,
-0.7977,
-0.7785,
-0.7587,
-0.7384,
-0.7176,
-0.6962,
-0.6745,
-0.6523,
-0.6297,
-0.6068,
-0.5835,
-0.5599,
-0.5361,
-0.5119,
-0.4876,
-0.4630,
-0.4382,
-0.4133,
-0.3881,
-0.3628,
-0.3374,
-0.3119,
-0.2863,
-0.2605,
-0.2347,
-0.2088,
-0.1828,
-0.1568,
-0.1307,
-0.1046,
-0.0785,
-0.0524,
-0.0262,
-0.0000,
--0.0262,
--0.0524,
--0.0785,
--0.1046,
--0.1307,
--0.1568,
--0.1828,
--0.2088,
--0.2347,
--0.2605,
--0.2863,
--0.3119,
--0.3374,
--0.3628,
--0.3881,
--0.4133,
--0.4382,
--0.4630,
--0.4876,
--0.5119,
--0.5361,
--0.5599,
--0.5835,
--0.6068,
--0.6297,
--0.6523,
--0.6745,
--0.6962,
--0.7176,
--0.7384,
--0.7587,
--0.7785,
--0.7977,
--0.8163,
--0.8343,
--0.8515,
--0.8680,
--0.8838,
--0.8987,
--0.9128,
--0.9260,
--0.9382,
--0.9495,
--0.9597,
--0.9689,
--0.9770,
--0.9839,
--0.9897,
--0.9942,
--0.9974,
--0.9994,
--1.0000,
--0.9992,
--0.9971,
--0.9935,
--0.9884,
--0.9819,
--0.9739,
--0.9643,
--0.9532,
--0.9406,
--0.9264,
--0.9106,
--0.8933,
--0.8744,
--0.8540,
--0.8320,
--0.8085,
--0.7835,
--0.7571,
--0.7292,
--0.6999,
--0.6693,
--0.6373,
--0.6041,
--0.5696,
--0.7460,
--0.8526,
--1.0003,
--0.9790,
--0.9185,
--0.8588,
--0.7999,
--0.7415,
--0.6838,
--0.5965,
--0.5095,
--0.4229,
--0.3364
+0.2500f,
+0.3800f,
+0.5100f,
+0.6400f,
+0.7700f,
+0.9000f,
+1.0000f,
+1.1000f,
+1.2000f,
+1.3000f,
+1.4000f,
+1.4600f,
+1.3500f,
+1.2800f,
+1.0000f,
+0.8000f,
+0.7900f,
+0.7800f,
+0.7700f,
+0.7600f,
+0.7500f,
+0.7835f,
+0.8085f,
+0.8320f,
+0.8540f,
+0.8744f,
+0.8933f,
+0.9106f,
+0.9264f,
+0.9406f,
+0.9532f,
+0.9643f,
+0.9739f,
+0.9819f,
+0.9884f,
+0.9935f,
+0.9971f,
+0.9992f,
+1.0000f,
+0.9994f,
+0.9974f,
+0.9942f,
+0.9897f,
+0.9839f,
+0.9770f,
+0.9689f,
+0.9597f,
+0.9495f,
+0.9382f,
+0.9260f,
+0.9128f,
+0.8987f,
+0.8838f,
+0.8680f,
+0.8515f,
+0.8343f,
+0.8163f,
+0.7977f,
+0.7785f,
+0.7587f,
+0.7384f,
+0.7176f,
+0.6962f,
+0.6745f,
+0.6523f,
+0.6297f,
+0.6068f,
+0.5835f,
+0.5599f,
+0.5361f,
+0.5119f,
+0.4876f,
+0.4630f,
+0.4382f,
+0.4133f,
+0.3881f,
+0.3628f,
+0.3374f,
+0.3119f,
+0.2863f,
+0.2605f,
+0.2347f,
+0.2088f,
+0.1828f,
+0.1568f,
+0.1307f,
+0.1046f,
+0.0785f,
+0.0524f,
+0.0262f,
+0.0000f,
+-0.0262f,
+-0.0524f,
+-0.0785f,
+-0.1046f,
+-0.1307f,
+-0.1568f,
+-0.1828f,
+-0.2088f,
+-0.2347f,
+-0.2605f,
+-0.2863f,
+-0.3119f,
+-0.3374f,
+-0.3628f,
+-0.3881f,
+-0.4133f,
+-0.4382f,
+-0.4630f,
+-0.4876f,
+-0.5119f,
+-0.5361f,
+-0.5599f,
+-0.5835f,
+-0.6068f,
+-0.6297f,
+-0.6523f,
+-0.6745f,
+-0.6962f,
+-0.7176f,
+-0.7384f,
+-0.7587f,
+-0.7785f,
+-0.7977f,
+-0.8163f,
+-0.8343f,
+-0.8515f,
+-0.8680f,
+-0.8838f,
+-0.8987f,
+-0.9128f,
+-0.9260f,
+-0.9382f,
+-0.9495f,
+-0.9597f,
+-0.9689f,
+-0.9770f,
+-0.9839f,
+-0.9897f,
+-0.9942f,
+-0.9974f,
+-0.9994f,
+-1.0000f,
+-0.9992f,
+-0.9971f,
+-0.9935f,
+-0.9884f,
+-0.9819f,
+-0.9739f,
+-0.9643f,
+-0.9532f,
+-0.9406f,
+-0.9264f,
+-0.9106f,
+-0.8933f,
+-0.8744f,
+-0.8540f,
+-0.8320f,
+-0.8085f,
+-0.7835f,
+-0.7571f,
+-0.7292f,
+-0.6999f,
+-0.6693f,
+-0.6373f,
+-0.6041f,
+-0.5696f,
+-0.7460f,
+-0.8526f,
+-1.0003f,
+-0.9790f,
+-0.9185f,
+-0.8588f,
+-0.7999f,
+-0.7415f,
+-0.6838f,
+-0.5965f,
+-0.5095f,
+-0.4229f,
+-0.3364f
 
 #endif
 };
@@ -815,191 +876,191 @@ float const Propeller::_CD_t[180] = {
 #if 0
     0.0077, 0.0078, 0.008, 0.0083, 0.0089, 0.0098, 0.0108, 0.0122, 0.0135,
     0.0149, 0.0164, 0.0182, 0.02, 0.0221, 0.0244, 0.0269, 0.0297, 0.134,
-    0.238, 0.26, 0.282, 0.305, 0.329, 0.354, 0.379, 0.405, 0.432, 0.46,0.57, 
+    0.238, 0.26, 0.282, 0.305, 0.329, 0.354, 0.379, 0.405, 0.432, 0.46,0.57,
     0.745, 0.92, 1.075, 1.215, 1.345, 1.47, 1.575, 1.665, 1.735, 1.78, 1.8,
     1.8, 1.78, 1.75, 1.7, 1.635, 1.555, 1.465, 1.35, 1.225, 1.085, 0.925,
     0.755, 0.575, 0.42, 0.32, 0.23, 0.14, 0.055, 0.25
 #else
-0.0000,
-0.0021,
-0.0042,
-0.0063,
-0.0084,
-0.0105,
-0.0125,
-0.0146,
-0.0167,
-0.0188,
-0.0209,
-0.0283,
-0.0356,
-0.0430,
-0.0503,
-0.0577,
-0.1371,
-0.2164,
-0.2366,
-0.2569,
-0.2771,
-0.2973,
-0.3176,
-0.3378,
-0.3737,
-0.4097,
-0.4456,
-0.4815,
-0.5175,
-0.5534,
-0.5893,
-0.6252,
-0.6612,
-0.6971,
-0.7292,
-0.7614,
-0.7935,
-0.8257,
-0.8578,
-0.8900,
-0.9221,
-0.9542,
-0.9864,
-1.0185,
-1.0507,
-1.0828,
-1.1166,
-1.1504,
-1.1843,
-1.2181,
-1.2519,
-1.2857,
-1.3195,
-1.3534,
-1.3872,
-1.4210,
-1.4368,
-1.4527,
-1.4685,
-1.4843,
-1.5002,
-1.5160,
-1.5318,
-1.5477,
-1.5635,
-1.5793,
-1.5952,
-1.6110,
-1.6268,
-1.6427,
-1.6585,
-1.6727,
-1.6870,
-1.7012,
-1.7155,
-1.7297,
-1.7440,
-1.7582,
-1.7725,
-1.7867,
-1.8010,
-1.8047,
-1.8083,
-1.8120,
-1.8157,
-1.8193,
-1.8230,
-1.8267,
-1.8304,
-1.8340,
-1.8377,
-1.8297,
-1.8218,
-1.8138,
-1.8059,
-1.7979,
-1.7899,
-1.7820,
-1.7740,
-1.7661,
-1.7581,
-1.7459,
-1.7337,
-1.7215,
-1.7093,
-1.6971,
-1.6850,
-1.6728,
-1.6606,
-1.6484,
-1.6362,
-1.6229,
-1.6097,
-1.5964,
-1.5832,
-1.5699,
-1.5567,
-1.5434,
-1.5302,
-1.5169,
-1.5037,
-1.4793,
-1.4550,
-1.4306,
-1.4063,
-1.3819,
-1.3575,
-1.3332,
-1.3088,
-1.2845,
-1.2601,
-1.2283,
-1.1966,
-1.1648,
-1.1331,
-1.1013,
-1.0695,
-1.0378,
-1.0060,
-0.9743,
-0.9425,
-0.9086,
-0.8748,
-0.8409,
-0.8070,
-0.7731,
-0.7393,
-0.7054,
-0.6715,
-0.6377,
-0.6038,
-0.5747,
-0.5456,
-0.5164,
-0.4873,
-0.4582,
-0.4291,
-0.4000,
-0.3708,
-0.3417,
-0.3126,
-0.2946,
-0.2766,
-0.2586,
-0.2406,
-0.2225,
-0.2045,
-0.1865,
-0.1685,
-0.1505,
-0.1325,
-0.1192,
-0.1060,
-0.0927,
-0.0795,
-0.0662,
-0.0530,
-0.0397,
-0.0265,
-0.0132
+0.0000f,
+0.0021f,
+0.0042f,
+0.0063f,
+0.0084f,
+0.0105f,
+0.0125f,
+0.0146f,
+0.0167f,
+0.0188f,
+0.0209f,
+0.0283f,
+0.0356f,
+0.0430f,
+0.0503f,
+0.0577f,
+0.1371f,
+0.2164f,
+0.2366f,
+0.2569f,
+0.2771f,
+0.2973f,
+0.3176f,
+0.3378f,
+0.3737f,
+0.4097f,
+0.4456f,
+0.4815f,
+0.5175f,
+0.5534f,
+0.5893f,
+0.6252f,
+0.6612f,
+0.6971f,
+0.7292f,
+0.7614f,
+0.7935f,
+0.8257f,
+0.8578f,
+0.8900f,
+0.9221f,
+0.9542f,
+0.9864f,
+1.0185f,
+1.0507f,
+1.0828f,
+1.1166f,
+1.1504f,
+1.1843f,
+1.2181f,
+1.2519f,
+1.2857f,
+1.3195f,
+1.3534f,
+1.3872f,
+1.4210f,
+1.4368f,
+1.4527f,
+1.4685f,
+1.4843f,
+1.5002f,
+1.5160f,
+1.5318f,
+1.5477f,
+1.5635f,
+1.5793f,
+1.5952f,
+1.6110f,
+1.6268f,
+1.6427f,
+1.6585f,
+1.6727f,
+1.6870f,
+1.7012f,
+1.7155f,
+1.7297f,
+1.7440f,
+1.7582f,
+1.7725f,
+1.7867f,
+1.8010f,
+1.8047f,
+1.8083f,
+1.8120f,
+1.8157f,
+1.8193f,
+1.8230f,
+1.8267f,
+1.8304f,
+1.8340f,
+1.8377f,
+1.8297f,
+1.8218f,
+1.8138f,
+1.8059f,
+1.7979f,
+1.7899f,
+1.7820f,
+1.7740f,
+1.7661f,
+1.7581f,
+1.7459f,
+1.7337f,
+1.7215f,
+1.7093f,
+1.6971f,
+1.6850f,
+1.6728f,
+1.6606f,
+1.6484f,
+1.6362f,
+1.6229f,
+1.6097f,
+1.5964f,
+1.5832f,
+1.5699f,
+1.5567f,
+1.5434f,
+1.5302f,
+1.5169f,
+1.5037f,
+1.4793f,
+1.4550f,
+1.4306f,
+1.4063f,
+1.3819f,
+1.3575f,
+1.3332f,
+1.3088f,
+1.2845f,
+1.2601f,
+1.2283f,
+1.1966f,
+1.1648f,
+1.1331f,
+1.1013f,
+1.0695f,
+1.0378f,
+1.0060f,
+0.9743f,
+0.9425f,
+0.9086f,
+0.8748f,
+0.8409f,
+0.8070f,
+0.7731f,
+0.7393f,
+0.7054f,
+0.6715f,
+0.6377f,
+0.6038f,
+0.5747f,
+0.5456f,
+0.5164f,
+0.4873f,
+0.4582f,
+0.4291f,
+0.4000f,
+0.3708f,
+0.3417f,
+0.3126f,
+0.2946f,
+0.2766f,
+0.2586f,
+0.2406f,
+0.2225f,
+0.2045f,
+0.1865f,
+0.1685f,
+0.1505f,
+0.1325f,
+0.1192f,
+0.1060f,
+0.0927f,
+0.0795f,
+0.0662f,
+0.0530f,
+0.0397f,
+0.0265f,
+0.0132f
 #endif
 };
 

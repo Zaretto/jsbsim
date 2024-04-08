@@ -7,21 +7,21 @@
  ------------- Copyright (C) 2005 -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -37,22 +37,14 @@ COMMENTS, REFERENCES,  and NOTES
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <iostream>
-#include <cstdlib>
-
 #include "FGAccelerometer.h"
-#include "models/FGPropagate.h"
 #include "models/FGAccelerations.h"
 #include "models/FGMassBalance.h"
-#include "input_output/FGXMLElement.h"
 #include "models/FGFCS.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGAccelerometer.cpp,v 1.17 2015/08/09 17:29:48 bcoconni Exp $");
-IDENT(IdHdr,ID_ACCELEROMETER);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -60,15 +52,20 @@ CLASS IMPLEMENTATION
 
 FGAccelerometer::FGAccelerometer(FGFCS* fcs, Element* element)
   : FGSensor(fcs, element),
-    FGSensorOrientation(element)
+    FGSensorOrientation(element, fcs->GetExec()->GetLogger())
 {
   Propagate = fcs->GetExec()->GetPropagate();
   Accelerations = fcs->GetExec()->GetAccelerations();
   MassBalance = fcs->GetExec()->GetMassBalance();
-  
+
   Element* location_element = element->FindElement("location");
-  if (location_element) vLocation = location_element->FindElementTripletConvertTo("IN");
-  else {cerr << "No location given for accelerometer. " << endl; exit(-1);}
+  if (location_element)
+    vLocation = location_element->FindElementTripletConvertTo("IN");
+  else {
+    XMLLogException err(fcs->GetExec()->GetLogger(), element);
+    err << "No location given for accelerometer.\n";
+    throw err;
+  }
 
   vRadius = MassBalance->StructuralToBody(vLocation);
 
@@ -89,7 +86,7 @@ bool FGAccelerometer::Run(void )
   // There is no input assumed. This is a dedicated acceleration sensor.
 
   vRadius = MassBalance->StructuralToBody(vLocation);
-    
+
   //aircraft forces
   vAccel = (Accelerations->GetBodyAccel()
             + Accelerations->GetPQRidot() * vRadius
@@ -102,7 +99,7 @@ bool FGAccelerometer::Run(void )
 
   ProcessSensorSignal();
 
-  if (IsOutput) SetOutput();
+  SetOutput();
 
   return true;
 }
@@ -115,7 +112,7 @@ bool FGAccelerometer::Run(void )
 //       variable is not set, debug_lvl is set to 1 internally
 //    0: This requests JSBSim not to output any messages
 //       whatsoever.
-//    1: This value explicity requests the normal JSBSim
+//    1: This value explicitly requests the normal JSBSim
 //       startup messages
 //    2: This value asks for a message to be printed out when
 //       a class is instantiated
@@ -134,12 +131,14 @@ void FGAccelerometer::Debug(int from)
 
   if (debug_lvl & 1) { // Standard console startup message output
     if (from == 0) { // Constructor
-      cout << "        Axis: " << ax[axis] << endl;
+      FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
+      log << "        Axis: " << ax[axis] << "\n";
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGAccelerometer" << endl;
-    if (from == 1) cout << "Destroyed:    FGAccelerometer" << endl;
+    FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGAccelerometer\n";
+    if (from == 1) log << "Destroyed:    FGAccelerometer\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -149,8 +148,6 @@ void FGAccelerometer::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

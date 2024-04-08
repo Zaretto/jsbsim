@@ -40,15 +40,11 @@ INCLUDES
 
 #include <string>
 
-#include "FGFDMExec.h"
 #include "FGJSBBase.h"
-#include "FGInitialCondition.h"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 DEFINITIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_TRIMAXIS "$Id: FGTrimAxis.h,v 1.7 2013/11/24 16:53:15 bcoconni Exp $"
 
 #define DEFAULT_TOLERANCE 0.001
 
@@ -70,6 +66,7 @@ const std::string ControlNames[] =  { "Throttle","Sideslip","Angle of Attack",
                                     };
 
 class FGInitialCondition;
+class FGFDMExec;
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS DOCUMENTATION

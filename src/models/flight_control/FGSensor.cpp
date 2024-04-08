@@ -7,21 +7,21 @@
  ------------- Copyright (C) 2005 -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -37,25 +37,22 @@ COMMENTS, REFERENCES,  and NOTES
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <iostream>
-#include <cstdlib>
-
 #include "FGSensor.h"
+#include "models/FGFCS.h"
 #include "input_output/FGXMLElement.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGSensor.cpp,v 1.28 2015/07/12 19:34:08 bcoconni Exp $");
-IDENT(IdHdr,ID_SENSOR);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 
-FGSensor::FGSensor(FGFCS* fcs, Element* element) : FGFCSComponent(fcs, element)
+FGSensor::FGSensor(FGFCS* fcs, Element* element)
+  : FGFCSComponent(fcs, element), generator(fcs->GetExec()->GetRandomGenerator())
 {
   // inputs are read from the base class constructor
 
@@ -106,8 +103,9 @@ FGSensor::FGSensor(FGFCS* fcs, Element* element) : FGFCSComponent(fcs, element)
       NoiseType = eAbsolute;
     } else {
       NoiseType = ePercent;
-      cerr << "Unknown noise type in sensor: " << Name << endl;
-      cerr << "  defaulting to PERCENT." << endl;
+      FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::ERROR);
+      log << "Unknown noise type in sensor: " << Name
+        << "\n  defaulting to PERCENT.\n";
     }
     string distribution = element->FindElement("noise")->GetAttributeValue("distribution");
     if (distribution == "UNIFORM") {
@@ -116,13 +114,13 @@ FGSensor::FGSensor(FGFCS* fcs, Element* element) : FGFCSComponent(fcs, element)
       DistributionType = eGaussian;
     } else {
       DistributionType = eUniform;
-      cerr << "Unknown random distribution type in sensor: " << Name << endl;
-      cerr << "  defaulting to UNIFORM." << endl;
+      FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::ERROR);
+      log << "Unknown random distribution type in sensor: " << Name
+        << "\n  defaulting to UNIFORM.\n";
     }
   }
 
-  FGFCSComponent::bind();
-  bind();
+  bind(element, fcs->GetPropertyManager().get());
 
   Debug(0);
 }
@@ -147,11 +145,11 @@ void FGSensor::ResetPastStates(void)
 
 bool FGSensor::Run(void)
 {
-  Input = InputNodes[0]->getDoubleValue() * InputSigns[0];
+  Input = InputNodes[0]->getDoubleValue();
 
   ProcessSensorSignal();
 
-  if (IsOutput) SetOutput();
+  SetOutput();
 
   return true;
 }
@@ -160,13 +158,11 @@ bool FGSensor::Run(void)
 
 void FGSensor::ProcessSensorSignal(void)
 {
-  Output = Input; // perfect sensor
-
   // Degrade signal as specified
 
-  if (fail_stuck) {
-    Output = PreviousOutput;
-  } else {
+  if (!fail_stuck) {
+    Output = Input; // perfect sensor
+
     if (lag != 0.0)            Lag();       // models sensor lag and filter
     if (noise_variance != 0.0) Noise();     // models noise
     if (drift_rate != 0.0)     Drift();     // models drift over time
@@ -190,11 +186,10 @@ void FGSensor::Noise(void)
 {
   double random_value=0.0;
 
-  if (DistributionType == eUniform) {
-    random_value = 2.0*(((double)rand()/(double)RAND_MAX) - 0.5);
-  } else {
-    random_value = GaussianRandomNumber();
-  }
+  if (DistributionType == eUniform)
+    random_value = generator->GetUniformRandomNumber();
+  else
+    random_value = generator->GetNormalRandomNumber();
 
   switch( NoiseType ) {
   case ePercent:
@@ -253,27 +248,56 @@ void FGSensor::Lag(void)
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-void FGSensor::bind(void)
+void FGSensor::bind(Element* el, FGPropertyManager* PropertyManager)
 {
   string tmp = Name;
+
+  FGFCSComponent::bind(el, PropertyManager);
+
   if (Name.find("/") == string::npos) {
     tmp = "fcs/" + PropertyManager->mkPropertyName(Name, true);
   }
   const string tmp_low = tmp + "/malfunction/fail_low";
   const string tmp_high = tmp + "/malfunction/fail_high";
   const string tmp_stuck = tmp + "/malfunction/fail_stuck";
+  const string tmp_randomseed = tmp + "/randomseed";
 
   PropertyManager->Tie( tmp_low, this, &FGSensor::GetFailLow, &FGSensor::SetFailLow);
   PropertyManager->Tie( tmp_high, this, &FGSensor::GetFailHigh, &FGSensor::SetFailHigh);
   PropertyManager->Tie( tmp_stuck, this, &FGSensor::GetFailStuck, &FGSensor::SetFailStuck);
-  
+  PropertyManager->Tie( tmp_randomseed, this, &FGSensor::GetNoiseRandomSeed, &FGSensor::SetNoiseRandomSeed);
+
   if (!quant_property.empty()) {
     if (quant_property.find("/") == string::npos) { // not found
       string qprop = "fcs/" + PropertyManager->mkPropertyName(quant_property, true);
-      PropertyManager->Tie(qprop, this, &FGSensor::GetQuantized);
+      SGPropertyNode* node = PropertyManager->GetNode(qprop, true);
+      if (node->isTied()) {
+        XMLLogException err(fcs->GetExec()->GetLogger(), el);
+        err << "Property " << tmp << " has already been successfully bound (late).\n";
+        throw err;
+      }
+      else
+        PropertyManager->Tie(qprop, this, &FGSensor::GetQuantized);
     }
   }
+}
 
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// User is supplying a random seed specifically for this sensor to override the
+// random seed used by FGFDMExec.
+
+void FGSensor::SetNoiseRandomSeed(int sr)
+{
+  RandomSeed = sr;
+  generator = std::make_shared<RandomNumberGenerator>(*RandomSeed);
+}
+
+int FGSensor::GetNoiseRandomSeed(void) const
+{
+  if (RandomSeed)
+    return *RandomSeed;
+  else
+    return fcs->GetExec()->SRand();
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -284,7 +308,7 @@ void FGSensor::bind(void)
 //       variable is not set, debug_lvl is set to 1 internally
 //    0: This requests JSBSim not to output any messages
 //       whatsoever.
-//    1: This value explicity requests the normal JSBSim
+//    1: This value explicitly requests the normal JSBSim
 //       startup messages
 //    2: This value asks for a message to be printed out when
 //       a class is instantiated
@@ -300,51 +324,48 @@ void FGSensor::Debug(int from)
   if (debug_lvl <= 0) return;
 
   if (debug_lvl & 1) { // Standard console startup message output
+    FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
     if (from == 0) { // Constructor
-      if (InputSigns.size() > 0) {
-        if (InputSigns[0] < 0)
-          cout << "      INPUT: -" << InputNodes[0]->GetName() << endl;
-        else
-          cout << "      INPUT: " << InputNodes[0]->GetName() << endl;
-      }
+      if (!InputNodes.empty())
+        log << "      INPUT: " << InputNodes[0]->GetNameWithSign() << fixed
+            << setprecision(4) << "\n";
       if (bits != 0) {
         if (quant_property.empty())
-          cout << "      Quantized output" << endl;
+          log << "      Quantized output\n";
         else
-          cout << "      Quantized output (property: " << quant_property << ")" << endl;
+          log << "      Quantized output (property: " << quant_property << ")\n";
 
-        cout << "        Bits: " << bits << endl;
-        cout << "        Min value: " << min << endl;
-        cout << "        Max value: " << max << endl;
-        cout << "          (span: " << span << ", granularity: " << granularity << ")" << endl;
+        log << "        Bits: " << bits << "\n";
+        log << "        Min value: " << min << "\n";
+        log << "        Max value: " << max << "\n";
+        log << "          (span: " << span << ", granularity: " << granularity << ")\n";
       }
-      if (bias != 0.0) cout << "      Bias: " << bias << endl;
-      if (gain != 0.0) cout << "      Gain: " << gain << endl;
-      if (drift_rate != 0) cout << "      Sensor drift rate: " << drift_rate << endl;
-      if (lag != 0) cout << "      Sensor lag: " << lag << endl;
+      if (bias != 0.0) log << "      Bias: " << bias << " \n";
+      if (gain != 0.0) log << "      Gain: " << gain << " \n";
+      if (drift_rate != 0) log << "      Sensor drift rate: " << drift_rate << " \n";
+      if (lag != 0) log << "      Sensor lag: " << lag << " \n";
       if (noise_variance != 0) {
         if (NoiseType == eAbsolute) {
-          cout << "      Noise variance (absolute): " << noise_variance << endl;
+          log << "      Noise variance (absolute): " << noise_variance << " \n";
         } else if (NoiseType == ePercent) {
-          cout << "      Noise variance (percent): " << noise_variance << endl;
+          log << "      Noise variance (percent): " << noise_variance << " \n";
         } else {
-          cout << "      Noise variance type is invalid" << endl;
+          log << "      Noise variance type is invalid\n";
         }
         if (DistributionType == eUniform) {
-          cout << "      Random noise is uniformly distributed." << endl;
+          log << "      Random noise is uniformly distributed.\n";
         } else if (DistributionType == eGaussian) {
-          cout << "      Random noise is gaussian distributed." << endl;
+          log << "      Random noise is gaussian distributed.\n";
         }
       }
-      if (IsOutput) {
-        for (unsigned int i=0; i<OutputNodes.size(); i++)
-          cout << "      OUTPUT: " << OutputNodes[i]->getName() << endl;
-      }
+      for (auto node: OutputNodes)
+        log << "      OUTPUT: " << node->getNameString() << "\n";
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGSensor" << endl;
-    if (from == 1) cout << "Destroyed:    FGSensor" << endl;
+    FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGSensor\n";
+    if (from == 1) log << "Destroyed:    FGSensor\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -354,8 +375,6 @@ void FGSensor::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

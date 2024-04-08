@@ -7,21 +7,21 @@
  ------------- Copyright (C) 2000 Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 HISTORY
 --------------------------------------------------------------------------------
@@ -37,17 +37,8 @@ SENTRY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <string>
-#include <vector>
-
 #include "FGJSBBase.h"
 #include "math/FGPropertyValue.h"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_FCSCOMPONENT "$Id: FGFCSComponent.h,v 1.28 2016/02/27 16:54:16 bcoconni Exp $"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
@@ -83,7 +74,6 @@ CLASS DOCUMENTATION
     - FGAngle
 
     @author Jon S. Berndt
-    @version $Id: FGFCSComponent.h,v 1.28 2016/02/27 16:54:16 bcoconni Exp $
     @see Documentation for the FGFCS class, and for the configuration file class
 */
 
@@ -101,7 +91,6 @@ public:
 
   virtual bool Run(void) { return true; }
   virtual void SetOutput(void);
-  void SetDtForFrameCount(int FrameCount);
   double GetOutput (void) const {return Output;}
   std::string GetName(void) const {return Name;}
   std::string GetType(void) const { return Type; }
@@ -110,34 +99,25 @@ public:
 
 protected:
   FGFCS* fcs;
-  FGPropertyManager* PropertyManager;
-  FGPropertyNode_ptr treenode;
-  std::vector <FGPropertyNode_ptr> OutputNodes;
-  FGPropertyNode_ptr ClipMinPropertyNode;
-  FGPropertyNode_ptr ClipMaxPropertyNode;
-  std::vector <FGPropertyValue*> InitNodes;
-  std::vector <std::string> InitNames;
-  std::vector <float> InitSigns;
-  std::vector <FGPropertyValue*> InputNodes;
-  std::vector <std::string> InputNames;
-  std::vector <float> InputSigns;
+  std::vector <SGPropertyNode_ptr> OutputNodes;
+  FGParameter_ptr ClipMin, ClipMax;
+  std::vector <FGPropertyValue_ptr> InitNodes;
+  std::vector <FGPropertyValue_ptr> InputNodes;
   std::vector <double> output_array;
   std::string Type;
   std::string Name;
   double Input;
   double Output;
-  double clipmax, clipmin;
   double delay_time;
   unsigned int delay;
   int index;
-  float clipMinSign, clipMaxSign;
   double dt;
-  bool IsOutput;
-  bool clip;
+  bool clip, cyclic_clip;
 
   void Delay(void);
   void Clip(void);
-  virtual void bind();
+  void CheckInputNodes(size_t MinNodes, size_t MaxNodes, Element* el);
+  virtual void bind(Element* el, FGPropertyManager* pm);
   virtual void Debug(int from);
 };
 

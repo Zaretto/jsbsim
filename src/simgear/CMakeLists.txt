@@ -3,12 +3,14 @@ add_subdirectory(props)
 add_subdirectory(magvar)
 add_subdirectory(misc)
 add_subdirectory(xml)
+add_subdirectory(io/iostreams)
 
-set(JSBSIM_SIMGEAR_HDR compiler.h)
+set(HEADERS compiler.h)
 
-propagate_source_files(SIMGEAR MAGVAR)
-propagate_source_files(SIMGEAR PROPS)
-propagate_source_files(SIMGEAR XML)
+add_library(Simgear OBJECT ${HEADERS})
+set_target_properties(Simgear PROPERTIES
+                              TARGET_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                              LINKER_LANGUAGE C)
 
-install(FILES ${JSBSIM_SIMGEAR_HDR} DESTINATION include/JSBSim/simgear)
 
+install(FILES ${HEADERS} DESTINATION include/JSBSim/simgear COMPONENT devel)

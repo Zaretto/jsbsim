@@ -19,10 +19,13 @@ if(NOT EXPAT_FOUND)
                       xmlrole.h
                       xmltok.h
                       xmltok_impl.h
-                      expat_config.h)
+                      expat_config.h
+                      siphash.h)
 endif()
 
-add_full_path_name(XML_SRC "${SOURCES}")
-add_full_path_name(XML_HDR "${HEADERS}")
+add_library(Xml OBJECT ${HEADERS} ${SOURCES})
+target_include_directories(Xml PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(Xml PROPERTIES TARGET_DIRECTORY
+                          ${CMAKE_CURRENT_SOURCE_DIR})
 
-install(FILES ${HEADERS} DESTINATION include/JSBSim/simgear/xml)
+install(FILES ${HEADERS} DESTINATION include/JSBSim/simgear/xml COMPONENT devel)

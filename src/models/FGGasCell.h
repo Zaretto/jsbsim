@@ -47,19 +47,13 @@ INCLUDES
 #include <string>
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_GASCELL "$Id: FGGasCell.h,v 1.16 2015/03/28 14:49:02 bcoconni Exp $"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 namespace JSBSim {
 
 class FGBallonet;
-class Element;
+class FGMassBalance;
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS DOCUMENTATION
@@ -262,7 +256,7 @@ private:
   FGMatrix33 gasCellJ;      // [slug foot^2]
   FGColumnVector3 gasCellM; // [lbs in]
 
-  FGMassBalance* MassBalance;
+  std::shared_ptr<FGMassBalance> MassBalance;
   void Debug(int from);
 
   /* Constants. */
@@ -365,7 +359,7 @@ private:
   double ValveOpen;        // 0 <= ValveOpen <= 1 (or higher).
   FGMatrix33 ballonetJ;     // [slug foot^2]
 
-  FGMassBalance* MassBalance;
+  std::shared_ptr<FGMassBalance> MassBalance;
   void Debug(int from);
 
   /* Constants. */

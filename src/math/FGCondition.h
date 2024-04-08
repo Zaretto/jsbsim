@@ -37,14 +37,8 @@ SENTRY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <map>
 #include "FGJSBBase.h"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_CONDITION "$Id: FGCondition.h,v 1.8 2015/02/27 20:36:47 bcoconni Exp $"
+#include "math/FGPropertyValue.h"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
@@ -61,42 +55,35 @@ CLASS DOCUMENTATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 /** Encapsulates a condition, which is used in parts of JSBSim including switches
-*/
+ */
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS DECLARATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-class FGCondition : public FGJSBBase
+class JSBSIM_API FGCondition : public FGJSBBase
 {
 public:
-  FGCondition(Element* element, FGPropertyManager* PropertyManager);
-  FGCondition(const std::string& test, FGPropertyManager* PropertyManager);
-  ~FGCondition(void);
+  FGCondition(Element* element, std::shared_ptr<FGPropertyManager> PropertyManager);
+  FGCondition(const std::string& test, std::shared_ptr<FGPropertyManager> PropertyManager,
+              Element* el);
 
-  bool Evaluate(void);
-  void PrintCondition(std::string indent="  ");
+  bool Evaluate(void) const;
+  void PrintCondition(std::string indent="  ") const;
 
 private:
+
   enum eComparison {ecUndef=0, eEQ, eNE, eGT, eGE, eLT, eLE};
   enum eLogic {elUndef=0, eAND, eOR};
-  std::map <std::string, eComparison> mComparison;
   eLogic Logic;
 
-  //FGPropertyManager *PropertyManager;
-  FGPropertyValue *TestParam1, *TestParam2;
-  double TestValue;
+  FGPropertyValue_ptr TestParam1;
+  FGParameter_ptr TestParam2;
   eComparison Comparison;
-  bool isGroup;
   std::string conditional;
-
-  static std::string indent;
-
-  std::vector <FGCondition*> conditions;
-  void InitializeConditionals(void);
+  std::vector<std::shared_ptr<FGCondition>> conditions;
 
   void Debug(int from);
 };
 }
 #endif
-

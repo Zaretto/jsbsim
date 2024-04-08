@@ -7,21 +7,21 @@
  ------------- Copyright (C) 2001  Jon S. Berndt (jon@jsbsim.org) --------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 HISTORY
 --------------------------------------------------------------------------------
@@ -38,17 +38,8 @@ SENTRY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <iosfwd>
-#include <vector>
-#include <string>
 #include "FGParameter.h"
-#include "input_output/FGPropertyManager.h"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_TABLE "$Id$"
+#include "math/FGPropertyValue.h"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
@@ -233,14 +224,13 @@ combustion_efficiency = Lookup_Combustion_Efficiency->GetValue(equivalence_ratio
 @endcode
 
 @author Jon S. Berndt
-@version $Id$
 */
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS DECLARATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-class FGTable : public FGParameter
+class JSBSIM_API FGTable : public FGParameter, public FGJSBBase
 {
 public:
   /// Destructor
@@ -249,15 +239,40 @@ public:
   /** This is the very important copy constructor.
       @param table a const reference to a table.*/
   FGTable(const FGTable& table);
+  /// Copy assignment constructor.
+  /* MSVC issues an error C2280 if not defined : it is needed by
+     std::unique_ptr<FGTable>.
+     See StackOverflow: https://stackoverflow.com/questions/31264984/c-compiler-error-c2280-attempting-to-reference-a-deleted-function-in-visual */
+  FGTable& operator=(const FGTable&);
 
   /// The constructor for a table
-  FGTable (FGPropertyManager* propMan, Element* el);
-  FGTable (int );
+  FGTable (std::shared_ptr<FGPropertyManager> propMan, Element* el,
+           const std::string& prefix="");
+  FGTable (int);
   FGTable (int, int);
+
+  /// Get the current table value
   double GetValue(void) const;
+  /// @brief Get a value from a 1D internal table
+  /// @param key Row coordinate at which the value must be interpolated
+  /// @return The interpolated value
   double GetValue(double key) const;
+  /// @brief Get a value from a 2D internal table
+  /// @param rowKey Row coordinate at which the value must be interpolated
+  /// @param colKey Column coordinate at which the value must be interpolated
+  /// @return The interpolated value
   double GetValue(double rowKey, double colKey) const;
+  /// @brief Get a value from a 3D internal table
+  /// @param rowKey Row coordinate at which the value must be interpolated
+  /// @param colKey Column coordinate at which the value must be interpolated
+  /// @param TableKey Table coordinate at which the value must be interpolated
+  /// @return The interpolated value
   double GetValue(double rowKey, double colKey, double TableKey) const;
+
+  double GetMinValue(void) const;
+  double GetMinValue(double colKey) const;
+  double GetMinValue(double colKey, double TableKey) const;
+
   /** Read the table in.
       Data in the config file should be in matrix format with the row
       independents as the first column and the column independents in
@@ -281,17 +296,16 @@ public:
        */
 
   void operator<<(std::istream&);
-  FGTable& operator<<(const double n);
-  FGTable& operator<<(const int n);
+  FGTable& operator<<(const double x);
 
-  inline double GetElement(int r, int c) const {return Data[r][c];}
-//  inline double GetElement(int r, int c, int t);
+  double GetElement(unsigned int r, unsigned int c) const;
+  double operator()(unsigned int r, unsigned int c) const
+  { return GetElement(r, c); }
 
-  double operator()(unsigned int r, unsigned int c) const {return GetElement(r, c);}
-//  double operator()(unsigned int r, unsigned int c, unsigned int t) {GetElement(r, c, t);}
-
-  void SetRowIndexProperty(FGPropertyNode *node) {lookupProperty[eRow] = node;}
-  void SetColumnIndexProperty(FGPropertyNode *node) {lookupProperty[eColumn] = node;}
+  void SetRowIndexProperty(SGPropertyNode *node)
+  { lookupProperty[eRow] = new FGPropertyValue(node); }
+  void SetColumnIndexProperty(SGPropertyNode *node)
+  { lookupProperty[eColumn] = new FGPropertyValue(node); }
 
   unsigned int GetNumRows() const {return nRows;}
 
@@ -302,23 +316,18 @@ public:
 private:
   enum type {tt1D, tt2D, tt3D} Type;
   enum axis {eRow=0, eColumn, eTable};
-  bool internal;
-  FGPropertyNode_ptr lookupProperty[3];
-  double** Data;
-  std::vector <FGTable*> Tables;
-  unsigned int nRows, nCols, nTables, dimension;
-  int colCounter, rowCounter, tableCounter;
-  mutable int lastRowIndex, lastColumnIndex, lastTableIndex;
-  double** Allocate(void);
-  FGPropertyManager* const PropertyManager;
+  bool internal = false;
+  std::shared_ptr<FGPropertyManager> PropertyManager; // Property root used to do late binding.
+  FGPropertyValue_ptr lookupProperty[3];
+  std::vector<double> Data;
+  std::vector<std::unique_ptr<FGTable>> Tables;
+  unsigned int nRows, nCols;
   std::string Name;
-  void bind(void);
-
-  unsigned int FindNumColumns(const std::string&);
+  void bind(Element* el, const std::string& Prefix);
+  void missingData(Element *el, unsigned int expected_size, size_t actual_size);
   void Debug(int from);
 };
 }
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 #endif
-

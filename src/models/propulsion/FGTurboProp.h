@@ -46,8 +46,6 @@ INCLUDES
 #include "FGEngine.h"
 #include "math/FGTable.h"
 
-#define ID_TURBOPROP "$Id: FGTurboProp.h,v 1.24 2016/07/10 12:39:28 bcoconni Exp $"
-
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
@@ -99,8 +97,6 @@ public:
       @param el pointer to the XML element representing the turbine engine
       @param engine_number engine number*/
   FGTurboProp(FGFDMExec* Executive, Element *el, int engine_number, struct Inputs& input);
-  /// Destructor
-  ~FGTurboProp();
 
   enum phaseType { tpOff, tpRun, tpSpinUp, tpStart, tpTrim };
 
@@ -121,7 +117,6 @@ public:
   bool GetCutoff(void) const { return Cutoff; }
 
   double GetN1(void) const {return N1;}
-  double GetEPR(void) const {return EPR;}
   double GetITT(void) const {return Eng_ITT_degC;}
   double GetEngStarting(void) const { return EngStarting; }
 
@@ -132,7 +127,6 @@ public:
   inline int GetCondition(void) const { return Condition; }
 
   void SetPhase( phaseType p ) { phase = p; }
-  void SetEPR(double epr) {EPR = epr;}
   void SetReverse(bool reversed) { Reversed = reversed; }
   void SetCutoff(bool cutoff) { Cutoff = cutoff; }
 
@@ -145,7 +139,6 @@ public:
 private:
 
   phaseType phase;         ///< Operating mode, or "phase"
-  double MilThrust;        ///< Maximum Unaugmented Thrust, static @ S.L. (lbf)
   double IdleN1;           ///< Idle N1
   double N1;               ///< N1
   double MaxN1;            ///< N1 at 100% throttle
@@ -155,7 +148,6 @@ private:
   bool Reversed;
   bool Cutoff;
 
-  double EPR;
   double OilPressure_psi;
   double OilTemp_degK;
 
@@ -197,10 +189,10 @@ private:
   void bindmodel(FGPropertyManager* pm);
   void Debug(int from);
 
-  FGTable* ITT_N1;             // ITT temperature depending on throttle command
-  FGTable* EnginePowerRPM_N1;
-  FGParameter* EnginePowerVC;
-  FGTable* CombustionEfficiency_N1;
+  std::unique_ptr<FGTable> ITT_N1;             // ITT temperature depending on throttle command
+  std::unique_ptr<FGTable> EnginePowerRPM_N1;
+  std::shared_ptr<FGParameter> EnginePowerVC;
+  std::unique_ptr<FGTable> CombustionEfficiency_N1;
 };
 }
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

@@ -9,21 +9,21 @@
  ------------- Copyright (C) 2011 Bertrand Coconnier -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -40,19 +40,16 @@ INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 #include <cstring>
-#include <cstdlib>
 
 #include "FGOutputFG.h"
-#include "FGFDMExec.h"
-#include "models/FGAerodynamics.h"
+#include "FGXMLElement.h"
 #include "models/FGAuxiliary.h"
 #include "models/FGPropulsion.h"
-#include "models/FGMassBalance.h"
-#include "models/FGPropagate.h"
-#include "models/FGGroundReactions.h"
 #include "models/FGFCS.h"
 #include "models/propulsion/FGPiston.h"
+#include "models/propulsion/FGElectric.h"
 #include "models/propulsion/FGTank.h"
+#include "FGLog.h"
 
 #if defined(WIN32) && !defined(__CYGWIN__)
 #  include <windows.h>
@@ -70,9 +67,6 @@ static const int endianTest = 1;
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGOutputFG.cpp,v 1.9 2014/02/17 05:01:55 jberndt Exp $");
-IDENT(IdHdr,ID_OUTPUTFG);
 
 // (stolen from FGFS native_fdm.cxx)
 // The function htond is defined this way due to the way some
@@ -122,9 +116,59 @@ CLASS IMPLEMENTATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 FGOutputFG::FGOutputFG(FGFDMExec* fdmex) :
-  FGOutputSocket(fdmex)
+  FGOutputSocket(fdmex), outputOptions{false, 1e6}
 {
   memset(&fgSockBuf, 0x0, sizeof(fgSockBuf));
+
+  if (fdmex->GetDebugLevel() > 0) {
+    FGLogging log(fdmex->GetLogger(), LogLevel::ERROR);
+    // Engine status
+    if (Propulsion->GetNumEngines() > FGNetFDM::FG_MAX_ENGINES)
+      log << "This vehicle has " << Propulsion->GetNumEngines() << " engines, but the current \n"
+          << "version of FlightGear's FGNetFDM only supports " << FGNetFDM::FG_MAX_ENGINES << " engines.\n"
+          << "Only the first " << FGNetFDM::FG_MAX_ENGINES << " engines will be used.\n";
+
+    // Consumables
+    if (Propulsion->GetNumTanks() > FGNetFDM::FG_MAX_TANKS)
+      log << "This vehicle has " << Propulsion->GetNumTanks() << " tanks, but the current \n"
+          << "version of FlightGear's FGNetFDM only supports " << FGNetFDM::FG_MAX_TANKS << " tanks.\n"
+          << "Only the first " << FGNetFDM::FG_MAX_TANKS << " tanks will be used.\n";
+
+    // Gear status
+    if (GroundReactions->GetNumGearUnits() > FGNetFDM::FG_MAX_WHEELS)
+      log << "This vehicle has " << GroundReactions->GetNumGearUnits() << " bogeys, but the current \n"
+          << "version of FlightGear's FGNetFDM only supports " << FGNetFDM::FG_MAX_WHEELS << " bogeys.\n"
+          << "Only the first " << FGNetFDM::FG_MAX_WHEELS << " bogeys will be used.\n";
+  }
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+bool FGOutputFG::Load(Element* el)
+{
+  if (!FGOutputSocket::Load(el)) {
+    return false;
+  }
+
+  // Check if there is a <time> element
+  Element* time_el = el->FindElement("time");
+  if (time_el) {
+    // Check if the attribute "type" is specified and is set to "simulation"
+    if (time_el->HasAttribute("type") && time_el->GetAttributeValue("type") == "simulation") {
+      outputOptions.useSimTime = true;
+    }
+
+    // Check if the attribute "resolution" is specified and set to a valid value
+    if (time_el->HasAttribute("resolution")) {
+      if (time_el->GetAttributeValueAsNumber("resolution") <= 1 &&
+          time_el->GetAttributeValueAsNumber("resolution") >= 1e-9) {
+        outputOptions.timeFactor = 1./time_el->GetAttributeValueAsNumber("resolution");
+      } else {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -137,8 +181,8 @@ void FGOutputFG::SocketDataFill(FGNetFDM* net)
   net->version = FG_NET_FDM_VERSION;
 
   // Positions
-  net->longitude = Propagate->GetLocation().GetLongitude(); // 
-  net->latitude  = Propagate->GetLocation().GetGeodLatitudeRad(); // geodetic (radians)
+  net->longitude = Propagate->GetLongitude(); // longitude (radians)
+  net->latitude  = Propagate->GetGeodLatitudeRad(); // geodetic (radians)
   net->altitude  = Propagate->GetAltitudeASL()*0.3048; // altitude, above sea level (meters)
   net->agl       = (float)(Propagate->GetDistanceAGL()*0.3048); // altitude, above ground level (meters)
 
@@ -172,64 +216,51 @@ void FGOutputFG::SocketDataFill(FGNetFDM* net)
   net->stall_warning = 0.0;  // 0.0 - 1.0 indicating the amount of stall
   net->slip_deg    = (float)(Auxiliary->Getbeta(inDegrees));  // slip ball deflection, deg
 
-  // Engine status
-  if (Propulsion->GetNumEngines() > FGNetFDM::FG_MAX_ENGINES && FDMExec->GetSimTime() == 0.0)
-    cerr << "This vehicle has " << Propulsion->GetNumEngines() << " engines, but the current " << endl
-         << "version of FlightGear's FGNetFDM only supports " << FGNetFDM::FG_MAX_ENGINES << " engines." << endl
-         << "Only the first " << FGNetFDM::FG_MAX_ENGINES << " engines will be used." << endl;
-
   net->num_engines = min(FGNetFDM::FG_MAX_ENGINES,Propulsion->GetNumEngines()); // Number of valid engines
 
   for (i=0; i<net->num_engines; i++) {
-    if (Propulsion->GetEngine(i)->GetRunning())
+    auto engine = Propulsion->GetEngine(i);
+    if (engine->GetRunning())
       net->eng_state[i] = 2;       // Engine state running
-    else if (Propulsion->GetEngine(i)->GetCranking())
+    else if (engine->GetCranking())
       net->eng_state[i] = 1;       // Engine state cranking
     else
       net->eng_state[i] = 0;       // Engine state off
 
-    switch (Propulsion->GetEngine(i)->GetType()) {
+    switch (engine->GetType()) {
     case (FGEngine::etRocket):
       break;
     case (FGEngine::etPiston):
-      net->rpm[i]       = (float)(((FGPiston *)Propulsion->GetEngine(i))->getRPM());
-      net->fuel_flow[i] = (float)(((FGPiston *)Propulsion->GetEngine(i))->getFuelFlow_gph());
-      net->fuel_px[i]   = 0; // Fuel pressure, psi  (N/A in current model)
-      net->egt[i]       = (float)(((FGPiston *)Propulsion->GetEngine(i))->GetEGT());
-      net->cht[i]       = (float)(((FGPiston *)Propulsion->GetEngine(i))->getCylinderHeadTemp_degF());
-      net->mp_osi[i]    = (float)(((FGPiston *)Propulsion->GetEngine(i))->getManifoldPressure_inHg());
-      net->oil_temp[i]  = (float)(((FGPiston *)Propulsion->GetEngine(i))->getOilTemp_degF());
-      net->oil_px[i]    = (float)(((FGPiston *)Propulsion->GetEngine(i))->getOilPressure_psi());
-      net->tit[i]       = 0; // Turbine Inlet Temperature  (N/A for piston)
+      {
+        auto piston_engine = static_pointer_cast<FGPiston>(engine);
+        net->rpm[i]       = (float)(piston_engine->getRPM());
+        net->fuel_flow[i] = (float)(piston_engine->getFuelFlow_gph());
+        net->fuel_px[i]   = 0; // Fuel pressure, psi  (N/A in current model)
+        net->egt[i]       = (float)(piston_engine->GetEGT());
+        net->cht[i]       = (float)(piston_engine->getCylinderHeadTemp_degF());
+        net->mp_osi[i]    = (float)(piston_engine->getManifoldPressure_inHg());
+        net->oil_temp[i]  = (float)(piston_engine->getOilTemp_degF());
+        net->oil_px[i]    = (float)(piston_engine->getOilPressure_psi());
+        net->tit[i]       = 0; // Turbine Inlet Temperature  (N/A for piston)
+      }
       break;
     case (FGEngine::etTurbine):
       break;
     case (FGEngine::etTurboprop):
       break;
     case (FGEngine::etElectric):
+      net->rpm[i] = static_cast<float>(static_pointer_cast<FGElectric>(engine)->getRPM());
       break;
     case (FGEngine::etUnknown):
       break;
     }
   }
 
-  // Consumables
-  if (Propulsion->GetNumTanks() > FGNetFDM::FG_MAX_TANKS && FDMExec->GetSimTime() == 0.0)
-    cerr << "This vehicle has " << Propulsion->GetNumTanks() << " tanks, but the current " << endl
-         << "version of FlightGear's FGNetFDM only supports " << FGNetFDM::FG_MAX_TANKS << " tanks." << endl
-         << "Only the first " << FGNetFDM::FG_MAX_TANKS << " tanks will be used." << endl;
-
   net->num_tanks = min(FGNetFDM::FG_MAX_TANKS, Propulsion->GetNumTanks());   // Max number of fuel tanks
 
   for (i=0; i<net->num_tanks; i++) {
-    net->fuel_quantity[i] = (float)(((FGTank *)Propulsion->GetTank(i))->GetContents());
+    net->fuel_quantity[i] = static_cast<float>(Propulsion->GetTank(i)->GetContents());
   }
-
-  // Gear status
-  if (GroundReactions->GetNumGearUnits() > FGNetFDM::FG_MAX_WHEELS && FDMExec->GetSimTime() == 0.0)
-    cerr << "This vehicle has " << GroundReactions->GetNumGearUnits() << " bogeys, but the current " << endl
-         << "version of FlightGear's FGNetFDM only supports " << FGNetFDM::FG_MAX_WHEELS << " bogeys." << endl
-         << "Only the first " << FGNetFDM::FG_MAX_WHEELS << " bogeys will be used." << endl;
 
   net->num_wheels  = min(FGNetFDM::FG_MAX_WHEELS, GroundReactions->GetNumGearUnits());
 
@@ -244,7 +275,14 @@ void FGOutputFG::SocketDataFill(FGNetFDM* net)
   }
 
   // Environment
-  net->cur_time    = (long int)1234567890;    // Friday, Feb 13, 2009, 23:31:30 UTC (not processed by FGFS anyway)
+  if (outputOptions.useSimTime) {
+    // Send simulation time with specified resolution
+    net->cur_time    = static_cast<uint32_t>(FDMExec->GetSimTime()*outputOptions.timeFactor);
+  } else {
+    // Default to sending constant dummy value to ensure backwards-compatibility
+    net->cur_time = 1234567890u;
+  }
+
   net->warp        = 0;                       // offset in seconds to unix time
   net->visibility  = 25000.0;                 // visibility in meters (for env. effects)
 

@@ -4,24 +4,24 @@
  Author:       Tony Peden
  Date started: 6/10/00
 
- ------------- Copyright (C) 1999  Anthony K. Peden (apeden@earthlink.net) -------------
+ --------- Copyright (C) 1999  Anthony K. Peden (apeden@earthlink.net) --------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 
  HISTORY
@@ -33,49 +33,38 @@ FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
 
 The purpose of this class is to provide storage for computed forces and
-encapsulate all the functionality associated with transforming those
-forces from their native coord system to the body system.  This includes
-computing the moments due to the difference between the point of application
-and the cg.
+encapsulate all the functionality associated with transforming those forces from
+their native coord system to the body system.  This includes computing the
+moments due to the difference between the point of application and the cg.
 
 */
 
-#include <iostream>
-#include <cstdlib>
-
 #include "FGForce.h"
 #include "FGFDMExec.h"
-#include "models/FGPropagate.h"
-#include "models/FGMassBalance.h"
 #include "models/FGAuxiliary.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
 
-IDENT(IdSrc,"$Id: FGForce.cpp,v 1.19 2014/01/13 10:46:10 ehofman Exp $");
-IDENT(IdHdr,ID_FORCE);
-
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-FGForce::FGForce(FGFDMExec *FDMExec) :
-                 fdmex(FDMExec),
-                 ttype(tNone)
+FGForce::FGForce(FGFDMExec *FDMExec)
+  : fdmex(FDMExec), MassBalance(fdmex->GetMassBalance()), ttype(tNone)
 {
   vFn.InitMatrix();
   vMn.InitMatrix();
-  vH.InitMatrix();
   vOrient.InitMatrix();
   vXYZn.InitMatrix();
   vActingXYZn.InitMatrix();
 
   vFb.InitMatrix();
   vM.InitMatrix();
-  vDXYZ.InitMatrix();
 
-  mT.InitMatrix(1., 0., 0.,
-                0., 1., 0.,
-                0., 0., 1.);
+  mT = { 1., 0., 0.,
+         0., 1., 0.,
+         0., 0., 1. };
 
   Debug(0);
 }
@@ -97,7 +86,7 @@ const FGColumnVector3& FGForce::GetBodyForces(void)
   // needs to be done like this to convert from structural to body coords.
   // CG and RP values are in inches
 
-  vDXYZ = fdmex->GetMassBalance()->StructuralToBody(vActingXYZn);
+  FGColumnVector3 vDXYZ = MassBalance->StructuralToBody(vActingXYZn);
 
   vM = vMn + vDXYZ*vFb;
 
@@ -113,12 +102,17 @@ const FGMatrix33& FGForce::Transform(void) const
     return fdmex->GetAuxiliary()->GetTw2b();
   case tLocalBody:
     return fdmex->GetPropagate()->GetTl2b();
+  case tInertialBody:
+    return fdmex->GetPropagate()->GetTi2b();
   case tCustom:
   case tNone:
     return mT;
   default:
-    cout << "Unrecognized tranform requested from FGForce::Transform()" << endl;
-    exit(1);
+    {
+      LogException err(fdmex->GetLogger());
+      err << "Unrecognized tranform requested from FGForce::Transform()\n";
+      throw err;
+    }
   }
 }
 
@@ -188,12 +182,12 @@ void FGForce::Debug(int from)
 
   if (debug_lvl & 1) { // Standard console startup message output
     if (from == 0) { // Constructor
-
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGForce" << endl;
-    if (from == 1) cout << "Destroyed:    FGForce" << endl;
+    FGLogging log(fdmex->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGForce\n";
+    if (from == 1) log << "Destroyed:    FGForce\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -203,8 +197,6 @@ void FGForce::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

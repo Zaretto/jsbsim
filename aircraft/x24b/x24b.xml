@@ -6,7 +6,7 @@
 
     <fileheader>
         <author> Jon Berndt </author>
-        <filecreationdate> 2001-01-01 </filecreationdate>
+        <filecreationdate>2001-01-01</filecreationdate>
         <version> $Revision: 1.14 $ </version>
         <description> X-24B research aircraft </description>
       <note>
@@ -48,7 +48,7 @@
         </location>
     </metrics>
 
-    <mass_balance>
+    <mass_balance negated_crossproduct_inertia="true">
         <ixx unit="SLUG*FT2"> 2650 </ixx>
         <iyy unit="SLUG*FT2"> 23710 </iyy>
         <izz unit="SLUG*FT2"> 24120 </izz>
@@ -110,16 +110,6 @@
     </ground_reactions>
     <propulsion>
         <engine file="XLR99">
-            <location unit="IN">
-                <x> 450 </x>
-                <y> 0 </y>
-                <z> 0 </z>
-            </location>
-            <orient unit="DEG">
-                <roll> 0.0 </roll>
-                <pitch> 0 </pitch>
-                <yaw> 0 </yaw>
-            </orient>
             <feed>0</feed>
             <feed>1</feed>
             <thruster file="xlr99_nozzle">
@@ -180,7 +170,6 @@
 
             <scheduled_gain name="Pitch Scheduled Gain 1">
                 <input>fcs/pitch-gain-1</input>
-                <gain>0.017</gain>
                 <table>
                     <independentVar>fcs/elevator-pos-rad</independentVar>
                     <tableData>
@@ -208,6 +197,7 @@
                          0.697 -33.433
                     </tableData>
                 </table>
+                <gain>0.017</gain>
             </scheduled_gain>
 
             <pure_gain name="Pitch SAS Feedback">

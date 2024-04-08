@@ -9,21 +9,21 @@
  ------------- Copyright (C) 2008  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -36,19 +36,14 @@ HISTORY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <iostream>
-
+#include "FGFDMExec.h"
 #include "FGBuoyantForces.h"
-#include "FGMassBalance.h"
-#include "input_output/FGPropertyManager.h"
 #include "input_output/FGXMLElement.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGBuoyantForces.cpp,v 1.30 2015/03/28 14:49:02 bcoconni Exp $");
-IDENT(IdHdr,ID_BUOYANTFORCES);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -123,7 +118,7 @@ bool FGBuoyantForces::Load(Element *document)
   Debug(2);
 
   // Perform base class Pre-Load
-  if (!FGModel::Load(document))
+  if (!FGModel::Upload(document, true))
     return false;
 
   gas_cell_element = document->FindElement("gas_cell");
@@ -132,8 +127,8 @@ bool FGBuoyantForces::Load(Element *document)
     Cells.push_back(new FGGasCell(FDMExec, gas_cell_element, Cells.size(), in));
     gas_cell_element = document->FindNextElement("gas_cell");
   }
-  
-  PostLoad(document, PropertyManager);
+
+  PostLoad(document, FDMExec);
 
   if (!NoneDefined) {
     bind();
@@ -171,15 +166,15 @@ const FGColumnVector3& FGBuoyantForces::GetGasMassMoment(void)
 const FGMatrix33& FGBuoyantForces::GetGasMassInertia(void)
 {
   size_t size = Cells.size();
-  
+
   if (size == 0) return gasCellJ;
 
-  gasCellJ = FGMatrix33();
+  gasCellJ.InitMatrix();
 
   for (unsigned int i=0; i < size; i++) {
     gasCellJ += Cells[i]->GetInertia();
   }
-  
+
   return gasCellJ;
 }
 
@@ -247,20 +242,19 @@ string FGBuoyantForces::GetBuoyancyValues(const string& delimeter)
 
 void FGBuoyantForces::bind(void)
 {
-  typedef double (FGBuoyantForces::*PGF)(int) const;
-  typedef void   (FGBuoyantForces::*PSF)(int, double);
+  using PSF = void (FGBuoyantForces::*)(int, double);
   PropertyManager->Tie("moments/l-buoyancy-lbsft", this, eL,
-                       (PGF)&FGBuoyantForces::GetMoments, (PSF)0, false);
+                       &FGBuoyantForces::GetMoments, (PSF)nullptr);
   PropertyManager->Tie("moments/m-buoyancy-lbsft", this, eM,
-                       (PGF)&FGBuoyantForces::GetMoments, (PSF)0, false);
+                       &FGBuoyantForces::GetMoments, (PSF)nullptr);
   PropertyManager->Tie("moments/n-buoyancy-lbsft", this, eN,
-                       (PGF)&FGBuoyantForces::GetMoments, (PSF)0, false);
+                       &FGBuoyantForces::GetMoments, (PSF)nullptr);
   PropertyManager->Tie("forces/fbx-buoyancy-lbs", this, eX,
-                       (PGF)&FGBuoyantForces::GetForces, (PSF)0, false);
+                       &FGBuoyantForces::GetForces, (PSF)nullptr);
   PropertyManager->Tie("forces/fby-buoyancy-lbs", this, eY,
-                       (PGF)&FGBuoyantForces::GetForces, (PSF)0, false);
+                       &FGBuoyantForces::GetForces, (PSF)nullptr);
   PropertyManager->Tie("forces/fbz-buoyancy-lbs", this, eZ,
-                       (PGF)&FGBuoyantForces::GetForces, (PSF)0, false);
+                       &FGBuoyantForces::GetForces, (PSF)nullptr);
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -288,12 +282,14 @@ void FGBuoyantForces::Debug(int from)
 
   if (debug_lvl & 1) { // Standard console startup message output
     if (from == 2) { // Loader
-      cout << endl << "  Buoyant Forces: " << endl;
+      FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+      log << "\n  Buoyant Forces: \n";
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGBuoyantForces" << endl;
-    if (from == 1) cout << "Destroyed:    FGBuoyantForces" << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGBuoyantForces\n";
+    if (from == 1) log << "Destroyed:    FGBuoyantForces\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -303,8 +299,6 @@ void FGBuoyantForces::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

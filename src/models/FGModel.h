@@ -7,21 +7,21 @@
  ------------- Copyright (C) 1999  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 HISTORY
 --------------------------------------------------------------------------------
@@ -39,14 +39,10 @@ INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 #include <string>
+#include <memory>
 
 #include "math/FGModelFunctions.h"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_MODEL "$Id: FGModel.h,v 1.25 2015/08/16 13:19:52 bcoconni Exp $"
+#include "simgear/misc/sg_path.hxx"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
@@ -70,16 +66,14 @@ CLASS DOCUMENTATION
 CLASS DECLARATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-class FGModel : public FGModelFunctions
+class JSBSIM_API FGModel : public FGModelFunctions
 {
 public:
 
   /// Constructor
-  FGModel(FGFDMExec*);
+  explicit FGModel(FGFDMExec*);
   /// Destructor
-  virtual ~FGModel();
-
-  std::string Name;
+  ~FGModel() override;
 
   /** Runs the model; called by the Executive.
       Can pass in a value indicating if the executive is directing the simulation to Hold.
@@ -92,31 +86,37 @@ public:
       @return false if no error */
   virtual bool Run(bool Holding);
 
-  virtual bool InitModel(void);
+  bool InitModel(void) override;
   /// Set the ouput rate for the model in frames
   void SetRate(unsigned int tt) {rate = tt;}
   /// Get the output rate for the model in frames
-  unsigned int GetRate(void)   {return rate;}
-  FGFDMExec* GetExec(void)     {return FDMExec;}
+  unsigned int GetRate(void) const { return rate; }
+  FGFDMExec* GetExec(void) const { return FDMExec; }
 
-  void SetPropertyManager(FGPropertyManager *fgpm) { PropertyManager=fgpm;}
-  virtual std::string FindFullPathName(const std::string& filename) const;
+  void SetPropertyManager(std::shared_ptr<FGPropertyManager> fgpm) { PropertyManager=fgpm;}
+  virtual SGPath FindFullPathName(const SGPath& path) const;
+  const std::string& GetName(void) const { return Name; }
+  virtual bool Load(Element* el) { return true; }
 
 protected:
   unsigned int exe_ctr;
   unsigned int rate;
+  std::string Name;
 
-  /** Loads this model.
-      @param el a pointer to the element
+  /** Uploads this model in memory.
+      Uploads the model in memory if its contents are contained in a separate
+      file.
+      @param el      a pointer to the element
+      @param preLoad true if model functions and local properties must be
+                     preloaded.
       @return true if model is successfully loaded*/
-  virtual bool Load(Element* el);
+  bool Upload(Element* el, bool preLoad);
 
   virtual void Debug(int from);
 
   FGFDMExec*         FDMExec;
-  FGPropertyManager* PropertyManager;
+  std::shared_ptr<FGPropertyManager> PropertyManager;
 };
 }
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #endif
-

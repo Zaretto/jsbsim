@@ -7,21 +7,21 @@
  ------------- Copyright (C) 2000 Jon S. Berndt jon@jsbsim.org -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 HISTORY
 --------------------------------------------------------------------------------
@@ -38,12 +38,6 @@ INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 #include "FGFCSComponent.h"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_FILTER "$Id: FGFilter.h,v 1.14 2014/01/02 21:58:42 bcoconni Exp $"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
@@ -81,15 +75,11 @@ time domain. The general format for a filter specification is:
 </typename>
 @endcode
 
-For a lag filter of the form,
+The numerical integration of filters is made by a Runge-Kutta scheme of order
+2 except for the second order filter which uses an RK scheme of order 3.
 
-@code
-  C1
-------
-s + C1
-@endcode
-
-the corresponding filter definition is:
+For a lag filter of the form \f$\frac{C_1}{s+C_1}\f$, the corresponding filter
+definition is:
 
 @code
 <lag_filter name="name">
@@ -103,15 +93,8 @@ the corresponding filter definition is:
 </lag_filter>
 @endcode
 
-As an example, for the specific filter:
-
-@code
-  600
-------
-s + 600
-@endcode
-
-the corresponding filter definition could be:
+As an example, for the specific filter \f$\frac{600}{s+600}\f$ the corresponding
+filter definition could be:
 
 @code
 <lag_filter name="Heading Roll Error Lag">
@@ -120,15 +103,8 @@ the corresponding filter definition could be:
 </lag_filter>
 @endcode
 
-For a lead-lag filter of the form:
-
-@code
-C1*s + C2
----------
-C3*s + C4
-@endcode
-
-The corresponding filter definition is:
+For a lead-lag filter of the form \f$\frac{C_1s+C_2}{C_3s+C_4}\f$, the
+corresponding filter definition is:
 
 @code
 <lead_lag_filter name="name">
@@ -145,15 +121,8 @@ The corresponding filter definition is:
 </lead_lag_filter>
 @endcode
 
-For a washout filter of the form:
-
-@code
-  s
-------
-s + C1
-@endcode
-
-The corresponding filter definition is:
+For a washout filter of the form \f$\frac{s}{s+C_1}\f$, the corresponding filter
+definition is:
 
 @code
 <washout_filter name="name">
@@ -167,15 +136,9 @@ The corresponding filter definition is:
 </washout_filter>
 @endcode
 
-For a second order filter of the form:
-
-@code
-C1*s^2 + C2*s + C3
-------------------
-C4*s^2 + C5*s + C6
-@endcode
-
-The corresponding filter definition is:
+For a second order filter of the form
+\f$\frac{C_1s^2+C_2s+C_3}{C_4s^2+C_5s+C_6}\f$, the corresponding filter
+definition is:
 
 @code
 <second_order_filter name="name">
@@ -194,26 +157,19 @@ The corresponding filter definition is:
 </second_order_filter>
 @endcode
 
-For an integrator of the form:
+For an integrator of the form \f$\frac{C_1}{s}\f$, the corresponding filter
+definition is:
 
 @code
- C1
- ---
-  s
-@endcode
-
-The corresponding filter definition is:
-
-@code
-<integrator name="name">
-  <input> property </input>
-  <c1> value|property </c1>
-  [<trigger> property </trigger>]
+<integrator name="{string}">
+  <input> {property} </input>
+  <c1 type="rect|trap|ab2|ab3"> {[-]property | number} </c1>
+  [<trigger> {property} </trigger>]
   [<clipto>
-    <min> {[-]property name | value} </min>
-    <max> {[-]property name | value} </max>
+    <min> {[-]property | number} </min>
+    <max> {[-]property | number} </max>
   </clipto>]
-  [<output> property </output>]
+  [<output> {property} </output>]
 </integrator>
 @endcode
 
@@ -223,12 +179,32 @@ property value is:
   - not 0: (or simply greater than zero), all current and previous inputs will
            be set to 0.0
 
+By default, the integration scheme is the trapezoidal scheme.
+
+An integrator is equivalent to a PID with the following parameters:
+@code
+<pid name="{string}">
+  <input> {[-]property} </input>
+  <kp> 0.0 </kp>
+  <ki type="rect|trap|ab2|ab3"> {number|[-]property} </ki>
+  <kd> 0.0 </kd>
+  <trigger> {property} </trigger>
+  [<clipto>
+  <min> {[-]property | value} </min>
+  <max> {[-]property | value} </max>
+  </clipto>]
+  [<output> {property} </output>]
+</pid>
+@endcode
+
+As a consequence, JSBSim internally uses PID controllers to simulate INTEGRATOR
+filters.
+
 In all the filter specifications above, an \<output> element is also seen.  This
-is so that the last component in a "string" can copy its value to the appropriate
-output, such as the elevator, or speedbrake, etc.
+is so that the last component in a "string" can copy its value to the
+appropriate output, such as the elevator, or speedbrake, etc.
 
 @author Jon S. Berndt
-@version $Revision: 1.14 $
 
 */
 
@@ -242,33 +218,26 @@ public:
   FGFilter(FGFCS* fcs, Element* element);
   ~FGFilter();
 
-  bool Run (void);
+  bool Run (void) override;
 
+  void ResetPastStates(void) override;
+
+private:
+  bool DynamicFilter;
   /** When true, causes previous values to be set to current values. This
       is particularly useful for first pass. */
   bool Initialize;
-  void ResetPastStates(void);
-  
-  enum {eLag, eLeadLag, eOrder2, eWashout, eIntegrator, eUnknown} FilterType;
+  double ca, cb, cc, cd, ce;
+  FGParameter_ptr C[7]; // There are 6 coefficients, indexing is "1" based.
+  double PreviousInput1, PreviousInput2;
+  double PreviousOutput1, PreviousOutput2;
 
-private:
-  double ca;
-  double cb;
-  double cc;
-  double cd;
-  double ce;
-  double C[7]; // There are 6 coefficients, indexing is "1" based.
-  double PropertySign[7];
-  double PreviousInput1;
-  double PreviousInput2;
-  double PreviousOutput1;
-  double PreviousOutput2;
-  FGPropertyNode_ptr Trigger;
-  FGPropertyNode_ptr PropertyNode[7];
+  enum {eLag, eLeadLag, eOrder2, eWashout, eUnknown} FilterType;
+
   void CalculateDynamicFilters(void);
-  void ReadFilterCoefficients(Element* el, int index);
-  bool DynamicFilter;
-  void Debug(int from);
+  void ReadFilterCoefficients(Element* el, int index,
+                              std::shared_ptr<FGPropertyManager> pm);
+  void Debug(int from) override;
 };
 }
 #endif

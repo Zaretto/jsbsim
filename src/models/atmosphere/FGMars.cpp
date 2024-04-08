@@ -41,15 +41,15 @@ COMMENTS, REFERENCES,  and NOTES
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include "FGMars.h"
 #include <iostream>
+
+#include "FGMars.h"
+#include "FGFDMExec.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGMars.cpp,v 1.13 2014/01/13 10:46:07 ehofman Exp $");
-IDENT(IdHdr,ID_MARS);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -81,7 +81,8 @@ void FGMars::Calculate(double altitude)
   Pressure = 14.62*exp(-0.00003*altitude); // psf - 14.62 psf =~ 7 millibars
   Density = Pressure/(Reng*Temperature); // slugs/ft^3 (needs deg R. as input
 
-  //cout << "Atmosphere:  h=" << altitude << " rho= " << intDensity << endl;
+  //FGLogging log(FDMExec->GetLogger(), LogLevel::INFO);
+  //log << "Atmosphere:  h=" << altitude << " rho= " << intDensity << "\n";
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -112,8 +113,9 @@ void FGMars::Debug(int from)
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGMars" << endl;
-    if (from == 1) cout << "Destroyed:    FGMars" << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGMars\n";
+    if (from == 1) log << "Destroyed:    FGMars\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -125,8 +127,6 @@ void FGMars::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

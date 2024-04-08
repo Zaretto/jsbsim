@@ -3,21 +3,22 @@
 
   Extension properties for the JSBSim visual reference point (VRP).
 
-    Copyright (C) 2015  Anders Gidenstam  (anders(at)gidenstam.org)
+    Copyright (C) 2015 - 2023  Anders Gidenstam  (anders(at)gidenstam.org)
 
-    This program is free software; you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation; either version 2 of the License, or
-    (at your option) any later version.
+    This library is free software; you can redistribute it and/or
+    modify it under the terms of the GNU Lesser General Public
+    License as published by the Free Software Foundation; either
+    version 2.1 of the License, or (at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
+    This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+    Lesser General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    You should have received a copy of the GNU Lesser General Public
+    License along with this library; if not, write to the Free Software
+    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301
+    USA
 
 -->
 <system name="visual-reference-point-extensions">
@@ -25,10 +26,10 @@
  <channel name="position">
 
   <fcs_function name="position/vrp-cg-altitude-offset-ft">
-   <documentation>
+   <description>
     Altitude offset of the visual reference point w.r.t. the centre of gravity.
     FIXME: Verify the roll dependence.
-   </documentation>
+   </description>
    <function>
     <sum>
      <product>
@@ -76,9 +77,9 @@
   </fcs_function>
 
   <fcs_function name="position/vrp-altitude-ft">
-   <documentation>
+   <description>
     Altitude of the visual reference point.
-   </documentation>
+   </description>
    <function>
     <sum>
      <property>position/h-sl-ft</property>
@@ -88,9 +89,9 @@
   </fcs_function>
 
   <fcs_function name="position/vrp-altitude-agl-ft">
-   <documentation>
+   <description>
     Distance between the visual reference point and the ground surface.
-   </documentation>
+   </description>
    <function>
     <sum>
      <property>position/h-agl-ft</property>
@@ -100,13 +101,13 @@
   </fcs_function>
 
   <fcs_function name="position/vrp-latitude-deg">
-   <documentation>
+   <description>
     Latitude of the visual reference point.
 
     Based on the geocentric to geodetic conversion
       vrp-latitude-deg = atan(tan(vrp-gc-latitude_deg)/(1-f)^2))
     where for WGS 84 f = 1.0/298.25722.
-   </documentation>
+   </description>
    <function>
     <product>
      <value>57.29578</value>
@@ -126,22 +127,22 @@
   </fcs_function>
 
   <fcs_function name="position/vrp-longitude-deg">
-   <documentation>
+   <description>
     Longitude of the visual reference point.
-   </documentation>
+   </description>
    <function>
     <property>position/vrp-longitude_deg</property>
    </function>
   </fcs_function>
 
   <fcs_function name="position/latitude-unit-distance-ft_deg">
-   <documentation>
+   <description>
     Feet per degree of latitude at the present position.
 
     The conversion is based on
     http://gis.stackexchange.com/questions/75528/length-of-a-degree-where-do-the-terms-in-this-formula-come-from
     but further truncated.
-   </documentation>
+   </description>
    <function>
     <product>
      <value>3.2808399</value>
@@ -164,13 +165,13 @@
   </fcs_function>
 
   <fcs_function name="position/longitude-unit-distance-ft_deg">
-   <documentation>
+   <description>
     Feet per degree of longitude at the present position.
 
     The conversion is based on
     http://gis.stackexchange.com/questions/75528/length-of-a-degree-where-do-the-terms-in-this-formula-come-from
     but further truncated.
-   </documentation>
+   </description>
    <function>
     <product>
      <value>3.2808399</value>
@@ -209,8 +210,6 @@
   -->
 
   <pid name="velocities/vrp-v-north-deg_sec">
-   <documentation>
-   </documentation>
    <input>position/vrp-latitude-deg</input>
    <kp>0.0</kp>
    <ki>0.0</ki>
@@ -218,11 +217,11 @@
   </pid>
 
   <fcs_function name="velocities/vrp-v-north-fps">
-   <documentation>
+   <description>
     The conversion from degrees of latitude per second to ft/sec is based on
     http://gis.stackexchange.com/questions/75528/length-of-a-degree-where-do-the-terms-in-this-formula-come-from
     but further truncated.
-   </documentation>
+   </description>
    <function>
     <product>
      <property>position/latitude-unit-distance-ft_deg</property>
@@ -232,8 +231,6 @@
   </fcs_function>
 
   <pid name="velocities/vrp-v-east-deg_sec">
-   <documentation>
-   </documentation>
    <input>position/vrp-longitude-deg</input>
    <kp>0.0</kp>
    <ki>0.0</ki>
@@ -241,11 +238,11 @@
   </pid>
 
   <fcs_function name="velocities/vrp-v-east-fps">
-   <documentation>
+   <description>
     The conversion from degrees of longitude per second to ft/sec is based on
     http://gis.stackexchange.com/questions/75528/length-of-a-degree-where-do-the-terms-in-this-formula-come-from
     but further truncated.
-   </documentation>
+   </description>
    <function>
     <product>
      <property>position/longitude-unit-distance-ft_deg</property>
@@ -255,8 +252,6 @@
   </fcs_function>
 
   <pid name="velocities/vrp-v-down-fps">
-   <documentation>
-   </documentation>
    <input>position/vrp-altitude-ft</input>
    <kp>0.0</kp>
    <ki>0.0</ki>

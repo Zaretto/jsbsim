@@ -7,7 +7,7 @@
 
  <fileheader>
   <author> Aeromatic v 3.3.0 </author>
-  <filecreationdate> 06 Jun 2016 </filecreationdate>
+  <filecreationdate>2016-06-06</filecreationdate>
   <version>$Revision: 1.18 $</version>
   <description> Models a PC-7. </description>
   <note>
@@ -31,7 +31,7 @@
     stall speed:   75.05kts
     max weight:    5953.50 lb
     length:        32.09 ft
-    wing: 
+    wing:
      span:         34.12 ft
      area:         178.68 sq-ft
      mean chord:   5.25 ft
@@ -99,64 +99,13 @@
    <pointmass name="Payload">
     <description> 2294.52 LBS should bring model up to entered max weight </description>
     <weight unit="LBS"> 1147.26 </weight>
-    <location name="POINTMASS" unit="IN">
+    <location unit="IN">
      <x>   154.02 </x>
      <y>     0.00 </y>
      <z>    -9.63 </z>
    </location>
   </pointmass>
  </mass_balance>
-
- <propulsion>
-
-   <engine file="PT6A">
-    <location unit="IN">
-      <x>    36.00 </x>
-      <y>     0.00 </y>
-      <z>     0.00 </z>
-    </location>
-    <orient unit="DEG">
-      <pitch>     0.00 </pitch>
-       <roll>     0.00 </roll>
-	<yaw>     0.00 </yaw>
-    </orient>
-    <feed> 0 </feed>
-
-    <thruster file="Propeller">
-     <sense> 1 </sense>
-     <location unit="IN">
-       <x>    36.00 </x>
-       <y>     0.00 </y>
-       <z>     0.00 </z>
-     </location>
-     <orient unit="DEG">
-       <pitch>     0.00 </pitch>
-	<roll>     0.00 </roll>
-	 <yaw>     0.00 </yaw>
-     </orient>
-    </thruster>
-  </engine>
-
-  <tank type="FUEL" number="0">
-     <location unit="IN">
-       <x>   154.02 </x>
-       <y>     0.00 </y>
-       <z>    -9.63 </z>
-     </location>
-     <capacity unit="LBS"> 363.16 </capacity>
-     <contents unit="LBS"> 181.58 </contents>
-  </tank>
-  <tank type="FUEL" number="1">
-     <location unit="IN">
-       <x>   154.02 </x>
-       <y>     0.00 </y>
-       <z>    -9.63 </z>
-     </location>
-     <capacity unit="LBS"> 363.16 </capacity>
-     <contents unit="LBS"> 181.58 </contents>
-  </tank>
-
- </propulsion>
 
  <ground_reactions>
 
@@ -234,6 +183,47 @@
 
  </ground_reactions>
 
+ <propulsion>
+
+   <engine file="PT6A">
+    <feed> 0 </feed>
+
+    <thruster file="Propeller">
+     <location unit="IN">
+       <x>    36.00 </x>
+       <y>     0.00 </y>
+       <z>     0.00 </z>
+     </location>
+     <orient unit="DEG">
+       <pitch>     0.00 </pitch>
+	<roll>     0.00 </roll>
+	 <yaw>     0.00 </yaw>
+     </orient>
+     <sense> 1 </sense>
+    </thruster>
+  </engine>
+
+  <tank type="FUEL" number="0">
+     <location unit="IN">
+       <x>   154.02 </x>
+       <y>     0.00 </y>
+       <z>    -9.63 </z>
+     </location>
+     <capacity unit="LBS"> 363.16 </capacity>
+     <contents unit="LBS"> 181.58 </contents>
+  </tank>
+  <tank type="FUEL" number="1">
+     <location unit="IN">
+       <x>   154.02 </x>
+       <y>     0.00 </y>
+       <z>    -9.63 </z>
+     </location>
+     <capacity unit="LBS"> 363.16 </capacity>
+     <contents unit="LBS"> 181.58 </contents>
+  </tank>
+
+ </propulsion>
+
  <system file="Conventional Controls.xml"/>
  <system file="Landing Gear.xml"/>
  <system file="Flaps.xml"/>
@@ -254,50 +244,46 @@
 
     <function name="aero/function/kCDge">
       <description>Change_in_drag_due_to_ground_effect</description>
-      <product>
-            <table>
-                <independentVar>aero/h_b-mac-ft</independentVar>
-                <tableData>
-                    0.0000        0.4800
-                    0.1000        0.5150
-                    0.1500        0.6290
-                    0.2000        0.7090
-                    0.3000        0.8150
-                    0.4000        0.8820
-                    0.5000        0.9280
-                    0.6000        0.9620
-                    0.7000        0.9880
-                    0.8000        1.0000
-                    0.9000        1.0000
-                    1.0000        1.0000
-                    1.1000        1.0000
-                </tableData>
-            </table>
-      </product>
+      <table>
+          <independentVar>aero/h_b-mac-ft</independentVar>
+          <tableData>
+              0.0000        0.4800
+              0.1000        0.5150
+              0.1500        0.6290
+              0.2000        0.7090
+              0.3000        0.8150
+              0.4000        0.8820
+              0.5000        0.9280
+              0.6000        0.9620
+              0.7000        0.9880
+              0.8000        1.0000
+              0.9000        1.0000
+              1.0000        1.0000
+              1.1000        1.0000
+          </tableData>
+      </table>
   </function>
 
   <function name="aero/function/kCLge">
       <description>Change_in_lift_due_to_ground_effect</description>
-      <product>
-            <table>
-                <independentVar>aero/h_b-mac-ft</independentVar>
-                <tableData>
-                    0.0000        1.2030
-                    0.1000        1.1270
-                    0.1500        1.0900
-                    0.2000        1.0730
-                    0.3000        1.0460
-                    0.4000        1.0550
-                    0.5000        1.0190
-                    0.6000        1.0130
-                    0.7000        1.0080
-                    0.8000        1.0060
-                    0.9000        1.0030
-                    1.0000        1.0020
-                    1.1000        1.0000
-                </tableData>
-            </table>
-      </product>
+      <table>
+          <independentVar>aero/h_b-mac-ft</independentVar>
+          <tableData>
+              0.0000        1.2030
+              0.1000        1.1270
+              0.1500        1.0900
+              0.2000        1.0730
+              0.3000        1.0460
+              0.4000        1.0550
+              0.5000        1.0190
+              0.6000        1.0130
+              0.7000        1.0080
+              0.8000        1.0060
+              0.9000        1.0030
+              1.0000        1.0020
+              1.1000        1.0000
+          </tableData>
+      </table>
   </function>
 
    <function name="aero/function/velocity-induced-fps">
@@ -819,8 +805,4 @@
   </axis>
 
  </aerodynamics>
-
- <external_reactions>
- </external_reactions>
-
 </fdm_config>

@@ -7,21 +7,21 @@
  ------------- Copyright (C) 2006 Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 HISTORY
 --------------------------------------------------------------------------------
@@ -36,16 +36,13 @@ INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 #include "FGPID.h"
-#include "input_output/FGXMLElement.h"
-#include <string>
-#include <iostream>
+#include "models/FGFCS.h"
+#include "math/FGParameterValue.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGPID.cpp,v 1.24 2014/01/13 10:46:09 ehofman Exp $");
-IDENT(IdHdr,ID_PID);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -53,43 +50,31 @@ CLASS IMPLEMENTATION
 
 FGPID::FGPID(FGFCS* fcs, Element* element) : FGFCSComponent(fcs, element)
 {
-  string kp_string, ki_string, kd_string;
+  Element *el;
 
-  Kp = Ki = Kd = 0.0;
-  KpPropertyNode = 0;
-  KiPropertyNode = 0;
-  KdPropertyNode = 0;
-  KpPropertySign = 1.0;
-  KiPropertySign = 1.0;
-  KdPropertySign = 1.0;
   I_out_total = 0.0;
   Input_prev = Input_prev2 = 0.0;
-  Trigger = 0;
-  ProcessVariableDot = 0;
+  Trigger = nullptr;
+  ProcessVariableDot = nullptr;
   IsStandard = false;
   IntType = eNone;       // No integrator initially defined.
 
+  CheckInputNodes(1, 1, element);
+
+  auto PropertyManager = fcs->GetPropertyManager();
   string pid_type = element->GetAttributeValue("type");
 
   if (pid_type == "standard") IsStandard = true;
 
-  if ( element->FindElement("kp") ) {
-    kp_string = element->FindElementValue("kp");
-    if (!is_number(kp_string)) { // property
-      if (kp_string[0] == '-') {
-       KpPropertySign = -1.0;
-       kp_string.erase(0,1);
-      }
-      KpPropertyNode = PropertyManager->GetNode(kp_string);
-    } else {
-      Kp = element->FindElementValueAsNumber("kp");
-    }
-  }
+  el = element->FindElement("kp");
+  if (el)
+    Kp = new FGParameterValue(el, PropertyManager);
+  else
+    Kp = new FGRealValue(0.0);
 
-  if ( element->FindElement("ki") ) {
-    ki_string = element->FindElementValue("ki");
-
-    string integ_type = element->FindElement("ki")->GetAttributeValue("type");
+  el = element->FindElement("ki");
+  if (el) {
+    string integ_type = el->GetAttributeValue("type");
     if (integ_type == "rect") {            // Use rectangular integration
       IntType = eRectEuler;
     } else if (integ_type == "trap") {     // Use trapezoidal integration
@@ -102,47 +87,43 @@ FGPID::FGPID(FGFCS* fcs, Element* element) : FGFCSComponent(fcs, element)
       IntType = eAdamsBashforth2;
     }
 
-    if (!is_number(ki_string)) { // property
-      if (ki_string[0] == '-') {
-       KiPropertySign = -1.0;
-       ki_string.erase(0,1);
-      }
-      KiPropertyNode = PropertyManager->GetNode(ki_string);
-    } else {
-      Ki = element->FindElementValueAsNumber("ki");
-    }
+    Ki = new FGParameterValue(el, PropertyManager);
   }
+  else
+    Ki = new FGRealValue(0.0);
 
-  if ( element->FindElement("kd") ) {
-    kd_string = element->FindElementValue("kd");
-    if (!is_number(kd_string)) { // property
-      if (kd_string[0] == '-') {
-       KdPropertySign = -1.0;
-       kd_string.erase(0,1);
-      }
-      KdPropertyNode = PropertyManager->GetNode(kd_string);
-    } else {
-      Kd = element->FindElementValueAsNumber("kd");
-    }
-  }
 
-  if (element->FindElement("pvdot")) {
-    ProcessVariableDot =  PropertyManager->GetNode(element->FindElementValue("pvdot"));
-  }
+  el = element->FindElement("kd");
+  if (el)
+    Kd = new FGParameterValue(el, PropertyManager);
+  else
+    Kd = new FGRealValue(0.0);
 
-  if (element->FindElement("trigger")) {
-    Trigger =  PropertyManager->GetNode(element->FindElementValue("trigger"));
-  }
+  el = element->FindElement("pvdot");
+  if (el)
+    ProcessVariableDot = new FGPropertyValue(el->GetDataLine(), PropertyManager, el);
 
-  FGFCSComponent::bind();
+  el = element->FindElement("trigger");
+  if (el)
+    Trigger = new FGPropertyValue(el->GetDataLine(), PropertyManager, el);
+
+  bind(el, PropertyManager.get());
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+void FGPID::bind(Element *el, FGPropertyManager* PropertyManager)
+{
+  FGFCSComponent::bind(el, PropertyManager);
+
   string tmp;
   if (Name.find("/") == string::npos) {
     tmp = "fcs/" + PropertyManager->mkPropertyName(Name, true);
   } else {
     tmp = Name;
   }
-  typedef double (FGPID::*PMF)(void) const;
-  PropertyManager->Tie(tmp+"/initial-integrator-value", this, (PMF)0, &FGPID::SetInitialOutput);
+  PropertyManager->Tie<FGPID, double>(tmp+"/initial-integrator-value", this,
+                                      nullptr, &FGPID::SetInitialOutput);
 
   Debug(0);
 }
@@ -151,6 +132,11 @@ FGPID::FGPID(FGFCS* fcs, Element* element) : FGFCSComponent(fcs, element)
 
 FGPID::~FGPID()
 {
+  delete Kp;
+  delete Ki;
+  delete Kd;
+  delete Trigger;
+  delete ProcessVariableDot;
   Debug(1);
 }
 
@@ -170,11 +156,7 @@ bool FGPID::Run(void )
   double I_out_delta = 0.0;
   double Dval = 0;
 
-  Input = InputNodes[0]->getDoubleValue() * InputSigns[0];
-
-  if (KpPropertyNode != 0) Kp = KpPropertyNode->getDoubleValue() * KpPropertySign;
-  if (KiPropertyNode != 0) Ki = KiPropertyNode->getDoubleValue() * KiPropertySign;
-  if (KdPropertyNode != 0) Kd = KdPropertyNode->getDoubleValue() * KdPropertySign;
+  Input = InputNodes[0]->getDoubleValue();
 
   if (ProcessVariableDot) {
     Dval = ProcessVariableDot->getDoubleValue();
@@ -188,44 +170,43 @@ bool FGPID::Run(void )
   // is negative.
 
   double test = 0.0;
-  if (Trigger != 0) test = Trigger->getDoubleValue();
+  if (Trigger) test = Trigger->getDoubleValue();
 
   if (fabs(test) < 0.000001) {
     switch(IntType) {
     case eRectEuler:
-      I_out_delta = Ki * dt * Input;                         // Normal rectangular integrator
+      I_out_delta = Input;                         // Normal rectangular integrator
       break;
     case eTrapezoidal:
-      I_out_delta = (Ki/2.0) * dt * (Input + Input_prev);    // Trapezoidal integrator
+      I_out_delta = 0.5 * (Input + Input_prev);    // Trapezoidal integrator
       break;
     case eAdamsBashforth2:
-      I_out_delta = Ki * dt * (1.5*Input - 0.5*Input_prev);  // 2nd order Adams Bashforth integrator
+      I_out_delta = 1.5*Input - 0.5*Input_prev;  // 2nd order Adams Bashforth integrator
       break;
     case eAdamsBashforth3:                                   // 3rd order Adams Bashforth integrator
-      I_out_delta = (Ki/12.0) * dt * (23.0*Input - 16.0*Input_prev + 5.0*Input_prev2);
+      I_out_delta = (23.0*Input - 16.0*Input_prev + 5.0*Input_prev2) / 12.0;
       break;
     case eNone:
-      // No integator is defined or used.
+      // No integrator is defined or used.
       I_out_delta = 0.0;
       break;
     }
   }
 
   if (test < 0.0) I_out_total = 0.0;  // Reset integrator to 0.0
-  
-  I_out_total += I_out_delta;
 
-  if (IsStandard) {
-    Output = Kp * (Input + I_out_total + Kd*Dval);
-  } else {
-    Output = Kp*Input + I_out_total + Kd*Dval;
-  }
+  I_out_total += Ki->GetValue() * dt * I_out_delta;
 
+  if (IsStandard)
+    Output = Kp->GetValue() * (Input + I_out_total + Kd->GetValue()*Dval);
+  else
+    Output = Kp->GetValue()*Input + I_out_total + Kd->GetValue()*Dval;
+
+  Input_prev2 = test < 0.0 ? 0.0:Input_prev;
   Input_prev = Input;
-  Input_prev2 = Input_prev;
 
   Clip();
-  if (IsOutput) SetOutput();
+  SetOutput();
 
   return true;
 }
@@ -238,7 +219,7 @@ bool FGPID::Run(void )
 //       variable is not set, debug_lvl is set to 1 internally
 //    0: This requests JSBSim not to output any messages
 //       whatsoever.
-//    1: This value explicity requests the normal JSBSim
+//    1: This value explicitly requests the normal JSBSim
 //       startup messages
 //    2: This value asks for a message to be printed out when
 //       a class is instantiated
@@ -254,21 +235,18 @@ void FGPID::Debug(int from)
   if (debug_lvl <= 0) return;
 
   if (debug_lvl & 1) { // Standard console startup message output
+    FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
     if (from == 0) { // Constructor
-      if (InputSigns[0] < 0)
-        cout << "      INPUT: -" << InputNodes[0]->GetName() << endl;
-      else
-        cout << "      INPUT: " << InputNodes[0]->GetName() << endl;
+      log << "      INPUT: " << InputNodes[0]->GetNameWithSign() << "\n";
 
-      if (IsOutput) {
-        for (unsigned int i=0; i<OutputNodes.size(); i++)
-          cout << "      OUTPUT: " << OutputNodes[i]->getName() << endl;
-      }
+      for (auto node: OutputNodes)
+        log << "      OUTPUT: " << node->getNameString() << "\n";
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGPID" << endl;
-    if (from == 1) cout << "Destroyed:    FGPID" << endl;
+    FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGPID\n";
+    if (from == 1) log << "Destroyed:    FGPID\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -278,8 +256,6 @@ void FGPID::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

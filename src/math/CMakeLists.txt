@@ -8,7 +8,9 @@ set(SOURCES FGColumnVector3.cpp
             FGTable.cpp
             FGCondition.cpp
             FGRungeKutta.cpp
-            FGModelFunctions.cpp)
+            FGModelFunctions.cpp
+            FGTemplateFunc.cpp
+            FGStateSpace.cpp)
 
 set(HEADERS FGColumnVector3.h
             FGFunction.h
@@ -22,10 +24,15 @@ set(HEADERS FGColumnVector3.h
             FGCondition.h
             FGRungeKutta.h
             FGModelFunctions.h
-            LagrangeMultiplier.h)
+            LagrangeMultiplier.h
+            FGTemplateFunc.h
+            FGFunctionValue.h
+            FGParameterValue.h
+            FGStateSpace.h)
 
-add_full_path_name(MATH_SRC "${SOURCES}")
-add_full_path_name(MATH_HDR "${HEADERS}")
+add_library(Math OBJECT ${HEADERS} ${SOURCES})
+set_target_properties(Math PROPERTIES TARGET_DIRECTORY
+                           ${CMAKE_CURRENT_SOURCE_DIR})
+add_coverage(Math)
 
-install(FILES ${HEADERS} DESTINATION include/JSBSim/math)
-
+install(FILES ${HEADERS} DESTINATION include/JSBSim/math COMPONENT devel)

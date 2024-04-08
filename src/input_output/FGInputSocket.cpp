@@ -38,30 +38,24 @@ HISTORY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <cstring>
-#include <cstdlib>
-#include <sstream>
-#include <iomanip>
-
 #include "FGInputSocket.h"
 #include "FGFDMExec.h"
 #include "models/FGAircraft.h"
-#include "input_output/FGXMLElement.h"
+#include "FGXMLElement.h"
+#include "string_utilities.h"
+#include "FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id");
-IDENT(IdHdr,ID_INPUTSOCKET);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 FGInputSocket::FGInputSocket(FGFDMExec* fdmex) :
-  FGInputType(fdmex),
-  socket(0)
+  FGInputType(fdmex), socket(0), SockProtocol(FGfdmSocket::ptTCP),
+  BlockingInput(false)
 {
 }
 
@@ -82,9 +76,14 @@ bool FGInputSocket::Load(Element* el)
   SockPort = atoi(el->GetAttributeValue("port").c_str());
 
   if (SockPort == 0) {
-    cerr << endl << "No port assigned in input element" << endl;
+    FGXMLLogging log(FDMExec->GetLogger(), el, LogLevel::ERROR);
+    log << "No port assigned in input element\n";
     return false;
   }
+
+  string action = el->GetAttributeValue("action");
+  if (to_upper(action) == "BLOCKING_INPUT")
+    BlockingInput = true;
 
   return true;
 }
@@ -95,7 +94,7 @@ bool FGInputSocket::InitModel(void)
 {
   if (FGInputType::InitModel()) {
     delete socket;
-    socket = new FGfdmSocket(SockPort);
+    socket = new FGfdmSocket(SockPort, SockProtocol);
 
     if (socket == 0) return false;
     if (!socket->GetConnectStatus()) return false;
@@ -110,31 +109,33 @@ bool FGInputSocket::InitModel(void)
 
 void FGInputSocket::Read(bool Holding)
 {
-  string line, token;
-  size_t start=0, string_start=0, string_end=0;
-  double value=0;
-  FGPropertyNode* node=0;
-
-  if (socket == 0) return;
+  if (!socket) return;
   if (!socket->GetConnectStatus()) return;
 
-  data = socket->Receive(); // get socket transmission if present
+  if (BlockingInput)
+    socket->WaitUntilReadable(); // block until a transmission is received
 
-  if (data.size() > 0) {
+  string raw_data = socket->Receive(); // read data
+
+  if (!raw_data.empty()) {
+    size_t start = 0;
+
+    data += raw_data;
+
     // parse lines
     while (1) {
-      string_start = data.find_first_not_of("\r\n", start);
+      size_t string_start = data.find_first_not_of("\r\n", start);
       if (string_start == string::npos) break;
-      string_end = data.find_first_of("\r\n", string_start);
+      size_t string_end = data.find_first_of("\r\n", string_start);
       if (string_end == string::npos) break;
-      line = data.substr(string_start, string_end-string_start);
-      if (line.size() == 0) break;
+      string line = data.substr(string_start, string_end-string_start);
+      if (line.empty()) break;
 
       // now parse individual line
       vector <string> tokens = split(line,' ');
 
-      string command="", argument="", str_value="";
-      if (tokens.size() > 0) {
+      string command, argument, str_value;
+      if (!tokens.empty()) {
         command = to_lower(tokens[0]);
         if (tokens.size() > 1) {
           argument = trim(tokens[1]);
@@ -144,152 +145,138 @@ void FGInputSocket::Read(bool Holding)
         }
       }
 
-      if (command == "set") {                   // SET PROPERTY
+      if (command == "set") {                       // SET PROPERTY
+        SGPropertyNode* node = nullptr;
 
-        if (argument.size() == 0) {
-          socket->Reply("No property argument supplied.\n");
+        if (argument.empty()) {
+          socket->Reply("No property argument supplied.\r\n");
           break;
         }
         try {
           node = PropertyManager->GetNode(argument);
         } catch(...) {
-          socket->Reply("Badly formed property query\n");
+          socket->Reply("Badly formed property query\r\n");
           break;
         }
 
-        if (node == 0) {
-          socket->Reply("Unknown property\n");
+        if (!node) {
+          socket->Reply("Unknown property\r\n");
           break;
         } else if (!node->hasValue()) {
-          socket->Reply("Not a leaf property\n");
+          socket->Reply("Not a leaf property\r\n");
           break;
         } else {
-          value = atof(str_value.c_str());
-          node->setDoubleValue(value);
-        }
-        socket->Reply("");
-
-      }
-      else if (command == "get") {             // GET PROPERTY
-
-          if (argument.size() == 0) {
-              socket->Reply("No property argument supplied.\n");
-              break;
-          }
           try {
-              node = PropertyManager->GetNode(argument);
+            double value = atof_locale_c(str_value);
+            node->setDoubleValue(value);
+          } catch(InvalidNumber& e) {
+            string msg(e.what());
+            msg += "\r\n";
+            socket->Reply(msg);
+            break;
           }
-          catch (...) {
-              socket->Reply("Badly formed property query\n");
-              break;
-          }
+        }
+        socket->Reply("set successful\r\n");
 
-          if (node == 0) {
-              socket->Reply("Unknown property\n");
-              break;
-          }
-          else if (!node->hasValue()) {
-              //if (node->nChildren() > 0)
-              //{
-              //    std::string buf;
-              //    for (int i = 0; i < node->nChildren(); i++)
-              //    {
-              //        SGPropertyNode *child_node = node->getChild(i);
-              //        if (child_node)
-              //        {
-              //            buf += child_node->getName();
-              //            if (child_node->hasValue())
-              //            {
-              //                char temp[1230];
-              //                sprintf(temp, ",%1.9f", child_node->getDoubleValue());
-              //                buf += std::string(temp);
-              //            }
-              //            else
-              //                if (child_node->nChildren() > 0)
-              //                    buf += "/";
-              //            buf += "\n";
-              //        }
-              //    }
-              //    socket->Reply(buf.c_str());
+      } else if (command == "get") {             // GET PROPERTY
+        SGPropertyNode* node = nullptr;
 
-              //}
-              if (Holding) { // if holding can query property list
-                  if (argument == std::string("//"))
-                      argument = "/";
-                  string query = FDMExec->QueryPropertyCatalog(argument);
-                  socket->Reply(query);
-              }
-              else {
-                  socket->Reply("Must be in HOLD to search properties\n");
-              }
-          }
-          else {
-              ostringstream buf;
-              buf << argument << " = " << setw(12) << setprecision(6) << node->getDoubleValue() << endl;
-              socket->Reply(buf.str());
-          }
+        if (argument.empty()) {
+          socket->Reply("No property argument supplied.\r\n");
+          break;
+        }
+        try {
+          node = PropertyManager->GetNode(argument);
+        } catch(...) {
+          socket->Reply("Badly formed property query\r\n");
+          break;
+        }
 
-      }
-      else if (command == "hold") {                  // PAUSE
+        if (!node) {
+          socket->Reply("Unknown property\r\n");
+          break;
+        } else if (!node->hasValue()) {
+          if (Holding) { // if holding can query property list
+            string query = FDMExec->QueryPropertyCatalog(argument, "\r\n");
+            socket->Reply(query);
+          } else {
+            socket->Reply("Must be in HOLD to search properties\r\n");
+          }
+        } else {
+          ostringstream buf;
+          buf << argument << " = " << setw(12) << setprecision(6) << node->getDoubleValue() << '\r' << endl;
+          socket->Reply(buf.str());
+        }
+
+      } else if (command == "hold") {               // PAUSE
 
         FDMExec->Hold();
-        socket->Reply("");
+        socket->Reply("Holding\r\n");
 
       } else if (command == "resume") {             // RESUME
 
         FDMExec->Resume();
-        socket->Reply("");
+        socket->Reply("Resuming\r\n");
 
-      } else if (command == "iterate") {             // ITERATE
+      } else if (command == "iterate") {            // ITERATE
 
         int argumentInt;
         istringstream (argument) >> argumentInt;
-        if (argument.size() == 0) {
-          socket->Reply("No argument supplied for number of iterations.\n");
+        if (argument.empty()) {
+          socket->Reply("No argument supplied for number of iterations.\r\n");
           break;
         }
         if ( !(argumentInt > 0) ){
-          socket->Reply("Required argument must be a positive Integer.\n");
+          socket->Reply("Required argument must be a positive Integer.\r\n");
           break;
         }
         FDMExec->EnableIncrementThenHold( argumentInt );
         FDMExec->Resume();
-        socket->Reply("");
+        socket->Reply("Iterations performed\r\n");
 
-      } else if (command == "quit") {                   // QUIT
+      } else if (command == "quit") {               // QUIT
 
         // close the socket connection
-        socket->Reply("");
+        socket->Send("Closing connection\r\n");
         socket->Close();
 
-      } else if (command == "info") {                   // INFO
+      } else if (command == "info") {               // INFO
 
         // get info about the sim run and/or aircraft, etc.
         ostringstream info;
-        info << "JSBSim version: " << JSBSim_version << endl;
-        info << "Config File version: " << needed_cfg_version << endl;
-        info << "Aircraft simulated: " << FDMExec->GetAircraft()->GetAircraftName() << endl;
-        info << "Simulation time: " << setw(8) << setprecision(3) << FDMExec->GetSimTime() << endl;
+        info << "JSBSim version: " << JSBSim_version << "\r\n";
+        info << "Config File version: " << needed_cfg_version << "\r\n";
+        info << "Aircraft simulated: " << FDMExec->GetAircraft()->GetAircraftName() << "\r\n";
+        info << "Simulation time: " << setw(8) << setprecision(3) << FDMExec->GetSimTime() << '\r' << endl;
         socket->Reply(info.str());
 
-      } else if (command == "help") {                   // HELP
+      } else if (command == "help") {               // HELP
 
         socket->Reply(
-        " JSBSim Server commands:\n\n"
-        "   get {property name}\n"
-        "   set {property name} {value}\n"
-        "   hold\n"
-        "   resume\n"
-        "   iterate {value}\n"
-        "   help\n"
-        "   quit\n"
-        "   info\n\n");
+        " JSBSim Server commands:\r\n\r\n"
+        "   get {property name}\r\n"
+        "   set {property name} {value}\r\n"
+        "   hold\r\n"
+        "   resume\r\n"
+        "   iterate {value}\r\n"
+        "   help\r\n"
+        "   quit\r\n"
+        "   info\r\n\r\n");
 
       } else {
-        socket->Reply(string("Unknown command: ") +  token + string("\n"));
+        socket->Reply(string("Unknown command: ") + command + "\r\n");
       }
 
       start = string_end;
+    }
+
+    // Remove processed commands.
+    size_t last_crlf = data.find_last_of("\r\n");
+    if (last_crlf != string::npos) {
+      if (last_crlf < data.length()-1)
+        data = data.substr(last_crlf+1);
+      else
+        data.clear();
     }
   }
 

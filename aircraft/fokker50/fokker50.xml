@@ -11,7 +11,7 @@
 
     <fileheader>
         <author> Erik Hofman </author>
-        <filecreationdate> 2002-01-01</filecreationdate>
+        <filecreationdate>2002-01-01</filecreationdate>
         <version> $Revision: 1.22 $ </version>
         <description> Fokker 50 commercial turboprop airliner </description>
         <reference refID="None" author="n/a" title="n/a" date="n/a"/>
@@ -180,19 +180,9 @@
 
 
     <propulsion>
-        <engine file="PW125BX">  -->
-            <location unit="IN">
-                <x> 497.072 </x>
-                <y> -190.298 </y>
-                <z> -40 </z>
-            </location>
-            <orient unit="DEG">
-                <roll> 0.0 </roll>
-                <pitch> 0 </pitch>
-                <yaw> 0 </yaw>
-            </orient>
+        <engine file="PW125BX">
             <feed>0</feed>
-            <thruster file="dowty-rotol-aero">   
+            <thruster file="dowty-rotol-aero">
                 <location unit="IN">
                     <x> 497.072 </x>
                     <y> -190.298 </y>
@@ -205,19 +195,9 @@
                 </orient>
             </thruster>
         </engine>
-        <engine file="PW125BX">  
-            <location unit="IN">
-                <x> 497.072 </x>
-                <y> 190.298 </y>
-                <z> -40 </z>
-            </location>
-            <orient unit="DEG">
-                <roll> 0.0 </roll>
-                <pitch> 0 </pitch>
-                <yaw> 0 </yaw>
-            </orient>
+        <engine file="PW125BX">
             <feed>1</feed>
-            <thruster file="dowty-rotol-aero">  
+            <thruster file="dowty-rotol-aero">
                 <location unit="IN">
                     <x> 497.072 </x>
                     <y> 190.298 </y>
@@ -249,7 +229,7 @@
             <capacity unit="LBS"> 4576 </capacity>
             <contents unit="LBS"> 1100 </contents>
         </tank>  <!--
-        <tank type="FUEL">     Tank number 2 
+        <tank type="FUEL">     Tank number 2
             <location unit="IN">
                 <x> 497.072 </x>
                 <y> 0 </y>
@@ -263,8 +243,8 @@
 
     <flight_control name="Fokker50">
 
-      <property value="0" type="float">/systems/fokker50/erp/settingn</property>
-      <property value="0" type="float">/systems/fokker50/erp/settinggi</property>
+      <property value="0">/systems/fokker50/erp/settingn</property>
+      <property value="0">/systems/fokker50/erp/settinggi</property>
 
       <channel name="EEC">
 
@@ -300,7 +280,7 @@
                          <property> /controls/engines/engine/throttle </property>
                      </product>
                  </function>
-               <output>fcs/throttle-cmd-norm[0]</output> 
+               <output>fcs/throttle-cmd-norm[0]</output>
              </fcs_function>
 
              <fcs_function name="fcs/eec-throttle-pos-norm[1]">
@@ -569,50 +549,46 @@
 
         <function name="aero/function/kCDge">
             <description>Change_in_drag_due_to_ground_effect</description>
-            <product>
-                  <table>
-                      <independentVar>aero/h_b-mac-ft</independentVar>
-                      <tableData>
-                          0.0000	0.0480
-                          0.1000	0.5150
-                          0.1500	0.6290
-                          0.2000	0.7090
-                          0.3000	0.8150
-                          0.4000	0.8820
-                          0.5000	0.9280
-                          0.6000	0.9620
-                          0.7000	0.9880
-                          0.8000	1.0000
-                          0.9000	1.0000
-                          1.0000	1.0000
-                          1.1000	1.0000
-                      </tableData>
-                  </table>
-            </product>
+            <table>
+                <independentVar>aero/h_b-mac-ft</independentVar>
+                <tableData>
+                    0.0000	0.0480
+                    0.1000	0.5150
+                    0.1500	0.6290
+                    0.2000	0.7090
+                    0.3000	0.8150
+                    0.4000	0.8820
+                    0.5000	0.9280
+                    0.6000	0.9620
+                    0.7000	0.9880
+                    0.8000	1.0000
+                    0.9000	1.0000
+                    1.0000	1.0000
+                    1.1000	1.0000
+                </tableData>
+            </table>
         </function>
 
         <function name="aero/function/kCLge">
             <description>Change_in_lift_due_to_ground_effect</description>
-            <product>
-                  <table>
-                      <independentVar>aero/h_b-mac-ft</independentVar>
-                      <tableData>
-                          0.0000	1.2030
-                          0.1000	1.1270
-                          0.1500	1.0900
-                          0.2000	1.0730
-                          0.3000	1.0460
-                          0.4000	1.0550
-                          0.5000	1.0190
-                          0.6000	1.0130
-                          0.7000	1.0080
-                          0.8000	1.0060
-                          0.9000	1.0030
-                          1.0000	1.0020
-                          1.1000	1.0000
-                      </tableData>
-                  </table>
-            </product>
+            <table>
+                <independentVar>aero/h_b-mac-ft</independentVar>
+                <tableData>
+                    0.0000	1.2030
+                    0.1000	1.1270
+                    0.1500	1.0900
+                    0.2000	1.0730
+                    0.3000	1.0460
+                    0.4000	1.0550
+                    0.5000	1.0190
+                    0.6000	1.0130
+                    0.7000	1.0080
+                    0.8000	1.0060
+                    0.9000	1.0030
+                    1.0000	1.0020
+                    1.1000	1.0000
+                </tableData>
+            </table>
         </function>
 
         <axis name="DRAG">
@@ -701,7 +677,7 @@
                 <product>
                     <property>aero/qbar-psf</property>
                     <property>metrics/Sw-sqft</property>
-                    <abs><property>fcs/elevator-pos-norm</property></abs>
+                    <property>fcs/mag-elevator-pos-rad</property>
                     <value>0.0400</value>
                 </product>
             </function>

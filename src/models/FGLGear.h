@@ -7,21 +7,21 @@
  ------------- Copyright (C) 1999  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 HISTORY
 --------------------------------------------------------------------------------
@@ -41,15 +41,8 @@ INCLUDES
 #include <string>
 
 #include "models/propulsion/FGForce.h"
-#include "math/FGColumnVector3.h"
+#include "math/FGLocation.h"
 #include "math/LagrangeMultiplier.h"
-#include "FGSurface.h"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_LGEAR "$Id: FGLGear.h,v 1.65 2016/05/16 18:19:57 bcoconni Exp $"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
@@ -60,6 +53,8 @@ namespace JSBSim {
 class FGTable;
 class Element;
 class FGPropertyManager;
+class FGGroundReactions;
+class FGFunction;
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS DOCUMENTATION
@@ -151,8 +146,8 @@ CLASS DOCUMENTATION
     in body frame.</li>
     </ol>
 
-    <h3>Configuration File Format:</h3>
-@code
+    <h3>Configuration File Format for \<contact> Section:</h3>
+@code{.xml}
         <contact type="{BOGEY | STRUCTURE}" name="{string}">
             <location unit="{IN | M}">
                 <x> {number} </x>
@@ -168,17 +163,19 @@ CLASS DOCUMENTATION
             <dynamic_friction> {number} </dynamic_friction>
             <rolling_friction> {number} </rolling_friction>
             <spring_coeff unit="{LBS/FT | N/M}"> {number} </spring_coeff>
-            <damping_coeff [type="SQUARE"] unit="{LBS/FT/SEC | N/M/SEC}"> {number} </damping_coeff>
-            <damping_coeff_rebound [type="SQUARE"] unit="{LBS/FT/SEC | N/M/SEC}"> {number} </damping_coeff_rebound>
+            <damping_coeff type="{ | SQUARE}" unit="{LBS/FT/SEC | N/M/SEC}"> {number} </damping_coeff>
+            <damping_coeff_rebound type="{ | SQUARE}" unit="{LBS/FT/SEC | N/M/SEC}"> {number} </damping_coeff_rebound>
             <max_steer unit="DEG"> {number | 0 | 360} </max_steer>
             <brake_group> {NONE | LEFT | RIGHT | CENTER | NOSE | TAIL} </brake_group>
             <retractable>{0 | 1}</retractable>
-            <table type="{CORNERING_COEFF}">
+            <table name="{CORNERING_COEFF}" type="internal">
+                <tableData>
+                    {cornering parameters}
+                </tableData>
             </table>
         </contact>
 @endcode
     @author Jon S. Berndt
-    @version $Id: FGLGear.h,v 1.65 2016/05/16 18:19:57 bcoconni Exp $
     @see Richard E. McFarland, "A Standard Kinematic Model for Flight Simulation at
      NASA-Ames", NASA CR-2497, January 1975
     @see Barnes W. McCormick, "Aerodynamics, Aeronautics, and Flight Mechanics",
@@ -191,7 +188,7 @@ CLASS DOCUMENTATION
 CLASS DECLARATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-class FGLGear : protected FGSurface, public FGForce
+class JSBSIM_API FGLGear : public FGForce
 {
 public:
   struct Inputs {
@@ -236,10 +233,8 @@ public:
   /// Destructor
   ~FGLGear();
 
-  /** The Force vector for this gear
-      @param surface another surface to interact with, set to NULL for none.
-   */
-  const FGColumnVector3& GetBodyForces(FGSurface *surface = NULL);
+  /// The Force vector for this gear
+  const FGColumnVector3& GetBodyForces(void) override;
 
   /// Gets the location of the gear in Body axes
   FGColumnVector3 GetBodyLocation(void) const {
@@ -273,7 +268,9 @@ public:
   /** Get the console touchdown reporting feature
       @return true if reporting is turned on */
   bool GetReport(void) const  { return ReportEnable; }
-  double GetSteerNorm(void) const { return radtodeg/maxSteerAngle*SteerAngle; }
+  double GetSteerNorm(void) const {
+    return maxSteerAngle == 0.0 ? 0.0 : radtodeg/maxSteerAngle*SteerAngle;
+  }
   void SetSteerCmd(double cmd) { SetSteerAngleDeg(cmd * maxSteerAngle); }
   double GetstaticFCoeff(void) const { return staticFCoeff; }
 
@@ -322,11 +319,11 @@ public:
   const struct Inputs& in;
 
   void ResetToIC(void);
-  void bind(void);
 
 private:
   int GearNumber;
-  static const FGMatrix33 Tb2s, Ts2b;
+  static const FGMatrix33 Tb2s;
+  static const FGMatrix33 Ts2b;
   FGMatrix33 mTGear;
   FGColumnVector3 vLocalGear;
   FGColumnVector3 vWhlVelVec, vGroundWhlVel;     // Velocity of this wheel
@@ -339,7 +336,7 @@ private:
   double bDampRebound;
   double compressLength;
   double compressSpeed;
-  double rollingFCoeff;
+  double staticFCoeff, dynamicFCoeff, rollingFCoeff;
   double Stiffness, Shape, Peak, Curvature; // Pacejka factors
   double BrakeFCoeff;
   double maxCompLen;
@@ -353,7 +350,12 @@ private:
   double FCoeff;
   double WheelSlip;
   double GearPos;
-  bool WOW;
+  double staticFFactor = 1.0;
+  double rollingFFactor = 1.0;
+  double maximumForce = DBL_MAX;
+  double bumpiness = 0.0;
+  bool isSolid = true;
+  bool WOW; // Weight On Wheel
   bool lastWOW;
   bool FirstContact;
   bool StartedGroundRun;
@@ -364,6 +366,7 @@ private:
   bool Castered;
   bool StaticFriction;
   std::string name;
+  double AGL; // Height above ground level
 
   BrakeGroup  eBrakeGrp;
   ContactType eContactType;
@@ -374,8 +377,11 @@ private:
 
   LagrangeMultiplier LMultiplier[3];
 
+  // NO std::shared_ptr<FGGroundReactions> here, to avoid circular references
+  // since FGGroundReactions owns the instances of FGLGear.
+  // Weak pointers are not needed since this FGLGear instance would not have
+  // been called if FGGroundReactions had been destroyed in the first place.
   FGGroundReactions* GroundReactions;
-  FGPropertyManager* PropertyManager;
 
   mutable bool useFCSGearPos;
 
@@ -394,6 +400,7 @@ private:
   void ReportTakeoffOrLanding(void);
   void Report(ReportType rt);
   void Debug(int from);
+  void bind(FGPropertyManager* pm);
 };
 }
 

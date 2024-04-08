@@ -7,21 +7,21 @@
  ------------- Copyright (C) 2000 -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -38,51 +38,38 @@ INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 #include "FGFilter.h"
-#include "input_output/FGXMLElement.h"
-#include "input_output/FGPropertyManager.h"
-
-#include <iostream>
-#include <string>
+#include "models/FGFCS.h"
+#include "math/FGParameterValue.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
 
-IDENT(IdSrc,"$Id: FGFilter.cpp,v 1.21 2015/09/27 20:26:23 bcoconni Exp $");
-IDENT(IdHdr,ID_FILTER);
-
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-FGFilter::FGFilter(FGFCS* fcs, Element* element) : FGFCSComponent(fcs, element)
+FGFilter::FGFilter(FGFCS* fcs, Element* element)
+  : FGFCSComponent(fcs, element), DynamicFilter(false), Initialize(true)
 {
-  Trigger = 0;
-  DynamicFilter = false;
+  C[1] = C[2] = C[3] = C[4] = C[5] = C[6] = nullptr;
 
-  C[1] = C[2] = C[3] = C[4] = C[5] = C[6] = 0.0;
-  for (int i=1; i<7; i++) {
-    PropertySign[i] = 1.0;
-    PropertyNode[i] = 0L;
-    ReadFilterCoefficients(element, i);
-  }
+  CheckInputNodes(1, 1, element);
+
+  auto PropertyManager = fcs->GetPropertyManager();
+  for (int i=1; i<7; i++)
+    ReadFilterCoefficients(element, i, PropertyManager);
 
   if      (Type == "LAG_FILTER")          FilterType = eLag        ;
   else if (Type == "LEAD_LAG_FILTER")     FilterType = eLeadLag    ;
   else if (Type == "SECOND_ORDER_FILTER") FilterType = eOrder2     ;
   else if (Type == "WASHOUT_FILTER")      FilterType = eWashout    ;
-  else if (Type == "INTEGRATOR")          FilterType = eIntegrator ;
   else                                    FilterType = eUnknown    ;
-
-  if (element->FindElement("trigger")) {
-    Trigger =  PropertyManager->GetNode(element->FindElementValue("trigger"));
-  }
-
-  Initialize = true;
 
   CalculateDynamicFilters();
 
-  FGFCSComponent::bind();
+  bind(element, PropertyManager.get());
 
   Debug(0);
 }
@@ -105,27 +92,18 @@ void FGFilter::ResetPastStates(void)
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-void FGFilter::ReadFilterCoefficients(Element* element, int index)
+void FGFilter::ReadFilterCoefficients(Element* element, int index,
+                                      std::shared_ptr<FGPropertyManager> PropertyManager)
 {
-  // index is known to be 1-7. 
+  // index is known to be 1-7.
   // A stringstream would be overkill, but also trying to avoid sprintf
   string coefficient = "c0";
   coefficient[1] += index;
-  
+
   if ( element->FindElement(coefficient) ) {
-    string property_string = element->FindElementValue(coefficient);
-    if (!is_number(property_string)) { // property
-      if (property_string[0] == '-') {
-       PropertySign[index] = -1.0;
-       property_string.erase(0,1);
-      } else {
-       PropertySign[index] = 1.0;
-      }
-      PropertyNode[index] = PropertyManager->GetNode(property_string);
-      DynamicFilter = true;
-    } else {
-      C[index] = element->FindElementValueAsNumber(coefficient);
-    }
+    C[index] = new FGParameterValue(element->FindElement(coefficient),
+                                    PropertyManager);
+    DynamicFilter |= !C[index]->IsConstant();
   }
 }
 
@@ -137,29 +115,18 @@ void FGFilter::CalculateDynamicFilters(void)
 
   switch (FilterType) {
     case eLag:
-      if (PropertyNode[1] != 0L) C[1] = PropertyNode[1]->getDoubleValue()*PropertySign[1];
-      denom = 2.00 + dt*C[1];
+      denom = 2.0 + dt*C[1];
       ca = dt*C[1] / denom;
-      cb = (2.00 - dt*C[1]) / denom;
+      cb = (2.0 - dt*C[1]) / denom;
 
       break;
     case eLeadLag:
-      if (PropertyNode[1] != 0L) C[1] = PropertyNode[1]->getDoubleValue()*PropertySign[1];
-      if (PropertyNode[2] != 0L) C[2] = PropertyNode[2]->getDoubleValue()*PropertySign[2];
-      if (PropertyNode[3] != 0L) C[3] = PropertyNode[3]->getDoubleValue()*PropertySign[3];
-      if (PropertyNode[4] != 0L) C[4] = PropertyNode[4]->getDoubleValue()*PropertySign[4];
-      denom = 2.00*C[3] + dt*C[4];
-      ca = (2.00*C[1] + dt*C[2]) / denom;
-      cb = (dt*C[2] - 2.00*C[1]) / denom;
-      cc = (2.00*C[3] - dt*C[4]) / denom;
+      denom = 2.0*C[3] + dt*C[4];
+      ca = (2.0*C[1] + dt*C[2]) / denom;
+      cb = (dt*C[2] - 2.0*C[1]) / denom;
+      cc = (2.0*C[3] - dt*C[4]) / denom;
       break;
     case eOrder2:
-      if (PropertyNode[1] != 0L) C[1] = PropertyNode[1]->getDoubleValue()*PropertySign[1];
-      if (PropertyNode[2] != 0L) C[2] = PropertyNode[2]->getDoubleValue()*PropertySign[2];
-      if (PropertyNode[3] != 0L) C[3] = PropertyNode[3]->getDoubleValue()*PropertySign[3];
-      if (PropertyNode[4] != 0L) C[4] = PropertyNode[4]->getDoubleValue()*PropertySign[4];
-      if (PropertyNode[5] != 0L) C[5] = PropertyNode[5]->getDoubleValue()*PropertySign[5];
-      if (PropertyNode[6] != 0L) C[6] = PropertyNode[6]->getDoubleValue()*PropertySign[6];
       denom = 4.0*C[4] + 2.0*C[5]*dt + C[6]*dt*dt;
       ca = (4.0*C[1] + 2.0*C[2]*dt + C[3]*dt*dt) / denom;
       cb = (2.0*C[3]*dt*dt - 8.0*C[1]) / denom;
@@ -168,17 +135,15 @@ void FGFilter::CalculateDynamicFilters(void)
       ce = (4.0*C[4] - 2.0*C[5]*dt + C[6]*dt*dt) / denom;
       break;
     case eWashout:
-      if (PropertyNode[1] != 0L) C[1] = PropertyNode[1]->getDoubleValue()*PropertySign[1];
-      denom = 2.00 + dt*C[1];
-      ca = 2.00 / denom;
-      cb = (2.00 - dt*C[1]) / denom;
-      break;
-    case eIntegrator:
-      if (PropertyNode[1] != 0L) C[1] = PropertyNode[1]->getDoubleValue()*PropertySign[1];
-      ca = dt*C[1] / 2.00;
+      denom = 2.0 + dt*C[1];
+      ca = 2.0 / denom;
+      cb = (2.0 - dt*C[1]) / denom;
       break;
     case eUnknown:
-      cerr << "Unknown filter type" << endl;
+    {
+      FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::ERROR);
+      log << "Unknown filter type\n";
+    }
     break;
   }
 
@@ -195,13 +160,13 @@ bool FGFilter::Run(void)
 
   } else {
 
-    Input = InputNodes[0]->getDoubleValue() * InputSigns[0];
-    
+    Input = InputNodes[0]->getDoubleValue();
+
     if (DynamicFilter) CalculateDynamicFilters();
-    
+
     switch (FilterType) {
       case eLag:
-        Output = Input * ca + PreviousInput1 * ca + PreviousOutput1 * cb;
+        Output = (Input + PreviousInput1) * ca + PreviousOutput1 * cb;
         break;
       case eLeadLag:
         Output = Input * ca + PreviousInput1 * cb + PreviousOutput1 * cc;
@@ -212,15 +177,6 @@ bool FGFilter::Run(void)
         break;
       case eWashout:
         Output = Input * ca - PreviousInput1 * ca + PreviousOutput1 * cb;
-        break;
-      case eIntegrator:
-        if (Trigger != 0) {
-          double test = Trigger->getDoubleValue();
-          if (fabs(test) > 0.000001) {
-            Input  = PreviousInput1 = PreviousInput2 = 0.0;
-          }
-        }
-        Output = Input * ca + PreviousInput1 * ca + PreviousOutput1;
         break;
       case eUnknown:
         break;
@@ -234,7 +190,7 @@ bool FGFilter::Run(void)
   PreviousInput1  = Input;
 
   Clip();
-  if (IsOutput) SetOutput();
+  SetOutput();
 
   return true;
 }
@@ -247,7 +203,7 @@ bool FGFilter::Run(void)
 //       variable is not set, debug_lvl is set to 1 internally
 //    0: This requests JSBSim not to output any messages
 //       whatsoever.
-//    1: This value explicity requests the normal JSBSim
+//    1: This value explicitly requests the normal JSBSim
 //       startup messages
 //    2: This value asks for a message to be printed out when
 //       a class is instantiated
@@ -260,88 +216,29 @@ bool FGFilter::Run(void)
 
 void FGFilter::Debug(int from)
 {
-  string sgn="";
-
   if (debug_lvl <= 0) return;
 
   if (debug_lvl & 1) { // Standard console startup message output
     if (from == 0) { // Constructor
-      cout << "      INPUT: " << InputNodes[0]->GetName() << endl;
-        switch (FilterType) {
-        case eLag:
-          if (PropertySign[1] < 0.0) sgn="-";
-          else sgn = "";
-          if (PropertyNode[1] == 0L) cout << "      C[1]: " << C[1] << endl;
-          else cout << "      C[1] is the value of property: " << sgn << PropertyNode[1]->GetName() << endl;
-          break;
-        case eLeadLag:
-          if (PropertySign[1] < 0.0) sgn="-";
-          else sgn = "";
-          if (PropertyNode[1] == 0L) cout << "      C[1]: " << C[1] << endl;
-          else cout << "      C[1] is the value of property: " << sgn << PropertyNode[1]->GetName() << endl;
-          if (PropertySign[2] < 0.0) sgn="-";
-          else sgn = "";
-          if (PropertyNode[2] == 0L) cout << "      C[2]: " << C[2] << endl;
-          else cout << "      C[2] is the value of property: " << sgn << PropertyNode[2]->GetName() << endl;
-          if (PropertySign[3] < 0.0) sgn="-";
-          else sgn = "";
-          if (PropertyNode[3] == 0L) cout << "      C[3]: " << C[3] << endl;
-          else cout << "      C[3] is the value of property: " << sgn << PropertyNode[3]->GetName() << endl;
-          if (PropertySign[4] < 0.0) sgn="-";
-          else sgn = "";
-          if (PropertyNode[4] == 0L) cout << "      C[4]: " << C[4] << endl;
-          else cout << "      C[4] is the value of property: " << sgn << PropertyNode[4]->GetName() << endl;
-          break;
-        case eOrder2:
-          if (PropertySign[1] < 0.0) sgn="-";
-          else sgn = "";
-          if (PropertyNode[1] == 0L) cout << "      C[1]: " << C[1] << endl;
-          else cout << "      C[1] is the value of property: " << sgn << PropertyNode[1]->GetName() << endl;
-          if (PropertySign[2] < 0.0) sgn="-";
-          else sgn = "";
-          if (PropertyNode[2] == 0L) cout << "      C[2]: " << C[2] << endl;
-          else cout << "      C[2] is the value of property: " << sgn << PropertyNode[2]->GetName() << endl;
-          if (PropertySign[3] < 0.0) sgn="-";
-          else sgn = "";
-          if (PropertyNode[3] == 0L) cout << "      C[3]: " << C[3] << endl;
-          else cout << "      C[3] is the value of property: " << sgn << PropertyNode[3]->GetName() << endl;
-          if (PropertySign[4] < 0.0) sgn="-";
-          else sgn = "";
-          if (PropertyNode[4] == 0L) cout << "      C[4]: " << C[4] << endl;
-          else cout << "      C[4] is the value of property: " << sgn << PropertyNode[4]->GetName() << endl;
-          if (PropertySign[5] < 0.0) sgn="-";
-          else sgn = "";
-          if (PropertyNode[5] == 0L) cout << "      C[5]: " << C[5] << endl;
-          else cout << "      C[5] is the value of property: " << sgn << PropertyNode[5]->GetName() << endl;
-          if (PropertySign[6] < 0.0) sgn="-";
-          else sgn = "";
-          if (PropertyNode[6] == 0L) cout << "      C[6]: " << C[6] << endl;
-          else cout << "      C[6] is the value of property: " << sgn << PropertyNode[6]->GetName() << endl;
-          break;
-        case eWashout:
-          if (PropertySign[1] < 0.0) sgn="-";
-          else sgn = "";
-          if (PropertyNode[1] == 0L) cout << "      C[1]: " << C[1] << endl;
-          else cout << "      C[1] is the value of property: " << sgn << PropertyNode[1]->GetName() << endl;
-          break;
-        case eIntegrator:
-          if (PropertySign[1] < 0.0) sgn="-";
-          else sgn = "";
-          if (PropertyNode[1] == 0L) cout << "      C[1]: " << C[1] << endl;
-          else cout << "      C[1] is the value of property: " << sgn << PropertyNode[1]->GetName() << endl;
-          break;
-        case eUnknown:
-          break;
-       } 
-      if (IsOutput) {
-        for (unsigned int i=0; i<OutputNodes.size(); i++)
-          cout << "      OUTPUT: " << OutputNodes[i]->getName() << endl;
+      FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
+      log << "      INPUT: " << InputNodes[0]->GetName() << fixed << "\n";
+
+      for (int i=1; i < 7; i++) {
+        if (!C[i]) break;
+
+        log << "      C[" << i << "]";
+        if (!C[i]->IsConstant()) log << " is the value of property";
+        log << ": "<< C[i]->GetName() << "\n";
       }
+
+      for (auto node: OutputNodes)
+        log << "      OUTPUT: " << node->getNameString() << "\n";
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGFilter" << endl;
-    if (from == 1) cout << "Destroyed:    FGFilter" << endl;
+    FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGFilter\n";
+    if (from == 1) log << "Destroyed:    FGFilter\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -351,8 +248,6 @@ void FGFilter::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

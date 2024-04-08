@@ -188,16 +188,6 @@
    </ground_reactions>
     <propulsion>
         <engine file="J33-A-35">
-            <location unit="IN">
-                <x> 354 </x>
-                <y> 0 </y>
-                <z> 0 </z>
-            </location>
-            <orient unit="DEG">
-                <roll> 0 </roll>
-                <pitch> 0 </pitch>
-                <yaw> 0 </yaw>
-            </orient>
             <feed>0</feed>
             <thruster file="direct">
                 <location unit="IN">
@@ -549,7 +539,7 @@
                 <product>
                     <property>aero/qbar-psf</property>
                     <property>metrics/Sw-sqft</property>
-                    <property>fcs/elevator-pos-rad</property>
+                    <property>fcs/mag-elevator-pos-rad</property>
                     <value>0.23</value>
                 </product>
             </function>

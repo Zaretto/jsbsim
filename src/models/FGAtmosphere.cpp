@@ -9,26 +9,26 @@
  ------------- Copyright (C) 2011  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
-This models a base atmosphere class to serve as a common interface to any derived
-atmosphere models.
+This models a base atmosphere class to serve as a common interface to any
+derived atmosphere models.
 
 HISTORY
 --------------------------------------------------------------------------------
@@ -42,26 +42,21 @@ COMMENTS, REFERENCES,  and NOTES
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <iostream>
-#include <iomanip>
-#include <cstdlib>
 #include "FGFDMExec.h"
 #include "FGAtmosphere.h"
+#include "input_output/FGLog.h"
+
+using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGAtmosphere.cpp,v 1.62 2016/01/16 12:05:47 bcoconni Exp $");
-IDENT(IdHdr,ID_ATMOSPHERE);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-FGAtmosphere::FGAtmosphere(FGFDMExec* fdmex) : FGModel(fdmex),
-                                               PressureAltitude(0.0),      // ft
-                                               DensityAltitude(0.0),       // ft
-                                               SutherlandConstant(198.72), // deg Rankine
-                                               Beta(2.269690E-08)          // slug/(sec ft R^0.5)
+FGAtmosphere::FGAtmosphere(FGFDMExec* fdmex)
+  : FGModel(fdmex),
+    StdDaySLsoundspeed(sqrt(SHRatio*Reng0*StdDaySLtemperature))
 {
   Name = "FGAtmosphere";
 
@@ -82,16 +77,11 @@ bool FGAtmosphere::InitModel(void)
 {
   if (!FGModel::InitModel()) return false;
 
-  Calculate(0.0);
-  SLtemperature = Temperature = 518.67;
-  SLpressure = Pressure = 2116.22;
+  SLtemperature = Temperature = StdDaySLtemperature;
+  SLpressure = Pressure = StdDaySLpressure;
   SLdensity = Density = Pressure/(Reng*Temperature);
-  SLsoundspeed = Soundspeed = sqrt(SHRatio*Reng*(Temperature));
-
-  rSLtemperature = 1/SLtemperature ;
-  rSLpressure    = 1/SLpressure    ;
-  rSLdensity     = 1/SLdensity     ;
-  rSLsoundspeed  = 1/SLsoundspeed  ;
+  SLsoundspeed = Soundspeed = StdDaySLsoundspeed;
+  Calculate(0.0);
 
   return true;
 }
@@ -110,28 +100,70 @@ bool FGAtmosphere::Run(bool Holding)
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+// Using pressure in Outer Space between stars in the Milky Way.
+
+double FGAtmosphere::ValidatePressure(double p, const string& msg, bool quiet) const
+{
+  const double MinPressure = ConvertToPSF(1E-15, ePascals);
+  if (p < MinPressure) {
+    if (!quiet) {
+      FGLogging log(FDMExec->GetLogger(), LogLevel::WARN);
+      log << msg << " " << p << " is too low." << endl
+          << msg << " will be capped to " << MinPressure << endl;
+    }
+    return MinPressure;
+  }
+  return p;
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  // Make sure that the ambient temperature never drops to zero.
+  // According to Wikipedia, 1K is the temperature at the coolest natural place
+  // currently (2023) known in the Universe: the Boomerang Nebula
+
+double FGAtmosphere::ValidateTemperature(double t, const string& msg, bool quiet) const
+{
+  // Minimum known temperature in the universe currently
+  constexpr double minUniverseTemperature = KelvinToRankine(1.0);
+
+  if (t < minUniverseTemperature) {
+    if (!quiet) {
+      FGLogging log(FDMExec->GetLogger(), LogLevel::WARN);
+      log << msg << " " << t << " is too low." << endl
+          << msg << " will be capped to " << minUniverseTemperature << endl;
+    }
+    return minUniverseTemperature;
+  }
+  return t;
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 void FGAtmosphere::Calculate(double altitude)
 {
-  FGPropertyNode* node = PropertyManager->GetNode();
+  SGPropertyNode* node = PropertyManager->GetNode();
+  double t =0.0;
   if (!PropertyManager->HasNode("atmosphere/override/temperature"))
-    Temperature = GetTemperature(altitude);
+    t = GetTemperature(altitude);
   else
-    Temperature = node->GetDouble("atmosphere/override/temperature");
+    t = node->getDoubleValue("atmosphere/override/temperature");
+  Temperature = ValidateTemperature(t, "", true);
 
+  double p = 0.0;
   if (!PropertyManager->HasNode("atmosphere/override/pressure"))
-    Pressure = GetPressure(altitude);
+    p = GetPressure(altitude);
   else
-    Pressure = node->GetDouble("atmosphere/override/pressure");
+    p = node->getDoubleValue("atmosphere/override/pressure");
+  Pressure = ValidatePressure(p, "", true);
 
   if (!PropertyManager->HasNode("atmosphere/override/density"))
     Density = Pressure/(Reng*Temperature);
   else
-    Density = node->GetDouble("atmosphere/override/density");
+    Density = node->getDoubleValue("atmosphere/override/density");
 
-  Soundspeed  = sqrt(SHRatio*Reng*(Temperature));
-  PressureAltitude = altitude;
-  DensityAltitude = altitude;
+  Soundspeed  = sqrt(SHRatio*Reng*Temperature);
+  PressureAltitude = CalculatePressureAltitude(Pressure, altitude);
+  DensityAltitude = CalculateDensityAltitude(Density, altitude);
 
   Viscosity = Beta * pow(Temperature, 1.5) / (SutherlandConstant + Temperature);
   KinematicViscosity = Viscosity / Density;
@@ -143,7 +175,8 @@ void FGAtmosphere::SetPressureSL(ePressure unit, double pressure)
 {
   double press = ConvertToPSF(pressure, unit);
 
-  SLpressure = press;
+  SLpressure = ValidatePressure(press, "Sea Level pressure");
+  SLdensity = GetDensity(0.0);
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -168,7 +201,11 @@ double FGAtmosphere::GetSoundSpeed(double altitude) const
 
 void FGAtmosphere::SetTemperatureSL(double t, eTemperature unit)
 {
-  SLtemperature = ConvertToRankine(t, unit);
+  double temp = ConvertToRankine(t, unit);
+
+  SLtemperature = ValidateTemperature(temp, "Sea Level temperature");
+  SLdensity = GetDensity(0.0);
+  SLsoundspeed = GetSoundSpeed(0.0);
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -182,16 +219,42 @@ double FGAtmosphere::ConvertToRankine(double t, eTemperature unit) const
     targetTemp = t + 459.67;
     break;
   case eCelsius:
-    targetTemp = t*9.0/5.0 + 32.0 + 459.67;
+    targetTemp = (t + 273.15) * 1.8;
     break;
   case eRankine:
     targetTemp = t;
     break;
   case eKelvin:
-    targetTemp = t*9.0/5.0;
+    targetTemp = t*1.8;
     break;
   default:
+    throw BaseException("Undefined temperature unit given");
+  }
+
+  return targetTemp;
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+double FGAtmosphere::ConvertFromRankine(double t, eTemperature unit) const
+{
+  double targetTemp=0;
+
+  switch(unit) {
+  case eFahrenheit:
+    targetTemp = t - 459.67;
     break;
+  case eCelsius:
+    targetTemp = t/1.8 - 273.15;
+    break;
+  case eRankine:
+    targetTemp = t;
+    break;
+  case eKelvin:
+    targetTemp = t/1.8;
+    break;
+  default:
+    throw BaseException("Undefined temperature unit given");
   }
 
   return targetTemp;
@@ -217,15 +280,17 @@ double FGAtmosphere::ConvertToPSF(double p, ePressure unit) const
     targetPressure = p*70.7180803;
     break;
   default:
-    throw("Undefined pressure unit given");
+    throw BaseException("Undefined pressure unit given");
   }
 
   return targetPressure;
 }
 
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 double FGAtmosphere::ConvertFromPSF(double p, ePressure unit) const
 {
-  double targetPressure=0; // Pressure in PSF
+  double targetPressure=0; // Pressure
 
   switch(unit) {
   case ePSF:
@@ -241,7 +306,7 @@ double FGAtmosphere::ConvertFromPSF(double p, ePressure unit) const
     targetPressure = p/70.7180803;
     break;
   default:
-    throw("Undefined pressure unit given");
+    throw BaseException("Undefined pressure unit given");
   }
 
   return targetPressure;
@@ -294,8 +359,9 @@ void FGAtmosphere::Debug(int from)
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) std::cout << "Instantiated: FGAtmosphere" << std::endl;
-    if (from == 1) std::cout << "Destroyed:    FGAtmosphere" << std::endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGAtmosphere" << std::endl;
+    if (from == 1) log << "Destroyed:    FGAtmosphere" << std::endl;
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -307,8 +373,6 @@ void FGAtmosphere::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      std::cout << IdSrc << std::endl;
-      std::cout << IdHdr << std::endl;
     }
   }
 }

@@ -7,21 +7,21 @@
  ------------- Copyright (C) 2001 Jon S. Berndt -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 HISTORY
 --------------------------------------------------------------------------------
@@ -38,12 +38,6 @@ INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 #include "FGFCSComponent.h"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_DEADBAND "$Id$"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
@@ -65,9 +59,10 @@ CLASS DOCUMENTATION
 
     @code
     <deadband name="Windup Trigger">
-      <input> [-]property </input>
-      <width> number </width>
-      [<clipto>
+      <input> {[-]property name | value} </input>
+      <width> {[-]property name | value} </width>
+      [<gain> { value } </gain>
+      <clipto>
         <min> {[-]property name | value} </min>
         <max> {[-]property name | value} </max>
       </clipto>]
@@ -79,7 +74,6 @@ CLASS DOCUMENTATION
     produce no output. For example, say that the width value is 2.0. If the
     input is between -1.0 and +1.0, the output will be zero.
     @author Jon S. Berndt
-    @version $Id$
 */
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -92,15 +86,13 @@ public:
   FGDeadBand(FGFCS* fcs, Element* element);
   ~FGDeadBand();
 
-  bool Run(void);
+  bool Run(void) override;
 
 private:
-  double width;
   double gain;
-  FGPropertyNode_ptr WidthPropertyNode;
-  double WidthPropertySign;
+  FGParameter_ptr Width;
 
-  void Debug(int from);
+  void Debug(int from) override;
 };
 }
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

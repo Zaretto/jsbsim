@@ -9,21 +9,21 @@
  ------------- Copyright (C) 1999  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -42,38 +42,33 @@ COMMENTS, REFERENCES,  and NOTES
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <iostream>
-#include <iterator>
-#include <cstdlib>
 #include <iomanip>
 
 #include "FGFDMExec.h"
 #include "models/atmosphere/FGStandardAtmosphere.h"
+#include "models/atmosphere/FGMSIS.h"
 #include "models/atmosphere/FGWinds.h"
 #include "models/FGFCS.h"
 #include "models/FGPropulsion.h"
 #include "models/FGMassBalance.h"
-#include "models/FGGroundReactions.h"
 #include "models/FGExternalReactions.h"
 #include "models/FGBuoyantForces.h"
 #include "models/FGAerodynamics.h"
 #include "models/FGInertial.h"
 #include "models/FGAircraft.h"
 #include "models/FGAccelerations.h"
-#include "models/FGPropagate.h"
 #include "models/FGAuxiliary.h"
 #include "models/FGInput.h"
-#include "models/FGOutput.h"
 #include "initialization/FGTrim.h"
+#include "initialization/FGLinearization.h"
 #include "input_output/FGScript.h"
 #include "input_output/FGXMLFileRead.h"
+#include "initialization/FGInitialCondition.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGFDMExec.cpp,v 1.192 2017/01/22 09:46:48 ehofman Exp $");
-IDENT(IdHdr,ID_FDMEXEC);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -82,14 +77,13 @@ CLASS IMPLEMENTATION
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 // Constructor
 
-FGFDMExec::FGFDMExec(FGPropertyManager* root, unsigned int* fdmctr) : Root(root), FDMctr(fdmctr)
+FGFDMExec::FGFDMExec(FGPropertyManager* root, std::shared_ptr<unsigned int> fdmctr)
+  : RandomSeed(0), RandomGenerator(make_shared<RandomNumberGenerator>(RandomSeed)),
+    FDMctr(fdmctr)
 {
   Frame           = 0;
-  Error           = 0;
-  IC              = 0;
-  Trim            = 0;
-  Script          = 0;
   disperse        = 0;
+  Log = make_shared<FGLogConsole>();
 
   RootDir = "";
 
@@ -97,9 +91,6 @@ FGFDMExec::FGFDMExec(FGPropertyManager* root, unsigned int* fdmctr) : Root(root)
   IsChild = false;
   holding = false;
   Terminate = false;
-  StandAlone = false;
-  ResetMode = 0;
-  RandomSeed = 0;
   HoldDown = false;
 
   IncrementThenHolding = false;  // increment then hold is off by default
@@ -113,49 +104,44 @@ FGFDMExec::FGFDMExec(FGPropertyManager* root, unsigned int* fdmctr) : Root(root)
   EnginePath = "engine";
   SystemsPath = "systems";
 
-  try {
-    char* num = getenv("JSBSIM_DEBUG");
-    if (num) debug_lvl = atoi(num); // set debug level
-  } catch (...) {                   // if error set to 1
+  if (const char* num = getenv("JSBSIM_DEBUG"); num != nullptr)
+    debug_lvl = strtol(num, nullptr, 0);
+  else
     debug_lvl = 1;
-  }
 
-  if (Root == 0) {                 // Then this is the root FDM
-    Root = new FGPropertyManager;  // Create the property manager
-    StandAlone = true;
-  }
-
-  if (FDMctr == 0) {
-    FDMctr = new unsigned int;     // Create and initialize the child FDM counter
-    (*FDMctr) = 0;
+  if (!FDMctr) {
+    FDMctr = std::make_shared<unsigned int>(); // Create and initialize the child FDM counter
+    *FDMctr = 0;
   }
 
   // Store this FDM's ID
-  IdFDM = (*FDMctr); // The main (parent) JSBSim instance is always the "zeroth"
+  IdFDM = *FDMctr; // The main (parent) JSBSim instance is always the "zeroth"
 
   // Prepare FDMctr for the next child FDM id
   (*FDMctr)++;       // instance. "child" instances are loaded last.
 
-  FGPropertyNode* instanceRoot = Root->GetNode("/fdm/jsbsim",IdFDM,true);
-  instance = new FGPropertyManager(instanceRoot);
+  if (root == nullptr)          // Then this is the root FDM
+    Root = new SGPropertyNode();
+  else
+    Root = root->GetNode();
 
-  try {
-    char* num = getenv("JSBSIM_DISPERSE");
-    if (num) {
-      if (atoi(num) != 0) disperse = 1;  // set dispersions on
-    }
-  } catch (...) {                        // if error set to false
-    disperse = 0;
-    std::cerr << "Could not process JSBSIM_DISPERSIONS environment variable: Assumed NO dispersions." << endl;
+  SGPropertyNode* instanceRoot = Root->getNode("fdm/jsbsim", IdFDM, true);
+  instance = std::make_shared<FGPropertyManager>(instanceRoot);
+
+  if (const char* num = getenv("JSBSIM_DISPERSE");
+      num != nullptr && strtol(num, nullptr, 0) != 0)
+  {
+    disperse = 1;  // set dispersions on
   }
 
   Debug(0);
   // this is to catch errors in binding member functions to the property tree.
   try {
     Allocate();
-  } catch (const string& msg ) {
-    cout << "Caught error: " << msg << endl;
-    exit(1);
+  } catch (const BaseException& e) {
+    LogException err(Log);
+    err << endl << "Caught error: " << e.what() << endl;
+    throw err;
   }
 
   trim_status = false;
@@ -163,17 +149,18 @@ FGFDMExec::FGFDMExec(FGPropertyManager* root, unsigned int* fdmctr) : Root(root)
   trim_completed = 0;
 
   Constructing = true;
-  typedef int (FGFDMExec::*iPMF)(void) const;
-  instance->Tie("simulation/do_simple_trim", this, (iPMF)0, &FGFDMExec::DoTrim, false);
-  instance->Tie("simulation/reset", this, (iPMF)0, &FGFDMExec::ResetToInitialConditions, false);
+  instance->Tie<FGFDMExec, int>("simulation/do_simple_trim", this, nullptr, &FGFDMExec::DoTrim);
+  instance->Tie<FGFDMExec, int>("simulation/do_linearization", this, nullptr, &FGFDMExec::DoLinearization);
+  instance->Tie<FGFDMExec, int>("simulation/reset", this, nullptr, &FGFDMExec::ResetToInitialConditions);
   instance->Tie("simulation/disperse", this, &FGFDMExec::GetDisperse);
-  instance->Tie("simulation/randomseed", this, (iPMF)&FGFDMExec::SRand, &FGFDMExec::SRand, false);
-  instance->Tie("simulation/terminate", (int *)&Terminate);
+  instance->Tie("simulation/randomseed", this, &FGFDMExec::SRand, &FGFDMExec::SRand);
+  instance->Tie("simulation/terminate", &Terminate);
+  instance->Tie("simulation/pause", &holding);
   instance->Tie("simulation/sim-time-sec", this, &FGFDMExec::GetSimTime);
   instance->Tie("simulation/dt", this, &FGFDMExec::GetDeltaT);
   instance->Tie("simulation/jsbsim-debug", this, &FGFDMExec::GetDebugLevel, &FGFDMExec::SetDebugLevel);
-  instance->Tie("simulation/frame", (int *)&Frame, false);
-  instance->Tie("simulation/trim-completed", (int *)&trim_completed, false);
+  instance->Tie("simulation/frame", reinterpret_cast<int*>(&Frame));
+  instance->Tie("simulation/trim-completed", &trim_completed);
   instance->Tie("forces/hold-down", this, &FGFDMExec::GetHoldDown, &FGFDMExec::SetHoldDown);
 
   Constructing = false;
@@ -186,34 +173,33 @@ FGFDMExec::~FGFDMExec()
   try {
     Unbind();
     DeAllocate();
-
-    delete instance;
-
-    if (IdFDM == 0) { // Meaning this is no child FDM
-      if(Root != 0) {
-         if(StandAlone)
-            delete Root;
-         Root = 0;
-      }
-      if(FDMctr != 0) {
-         delete FDMctr;
-         FDMctr = 0;
-      }
-    }
   } catch (const string& msg ) {
-    cout << "Caught error: " << msg << endl;
+    FGLogging log(Log, LogLevel::FATAL);
+    log << "Caught error: " << msg << endl;
   }
 
-  for (unsigned int i=1; i<ChildFDMList.size(); i++) delete ChildFDMList[i]->exec;
-  ChildFDMList.clear();
-
-  PropertyCatalog.clear();
-  
-  SetGroundCallback(0);
-
-  if (FDMctr != 0) (*FDMctr)--;
+  if (!FDMctr) (*FDMctr)--;
 
   Debug(1);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+double FGFDMExec::Setsim_time(double cur_time) {
+  sim_time = cur_time;
+  Inertial->SetTime(sim_time);
+  return sim_time;
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+double FGFDMExec::IncrTime(void) {
+  if (!holding && !IntegrationSuspended()) {
+    sim_time += dT;
+    Inertial->SetTime(sim_time);
+    Frame++;
+  }
+  return sim_time;
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -228,59 +214,53 @@ bool FGFDMExec::Allocate(void)
   // the inertial model and the ground callback to build themselves.
   // Note that this does not affect the order in which the models will be
   // executed later.
-  Models[eInertial]          = new FGInertial(this);
-  SetGroundCallback(new FGDefaultGroundCallback(static_cast<FGInertial*>(Models[eInertial])->GetRefRadius()));
+  Models[eInertial]          = std::make_shared<FGInertial>(this);
 
   // See the eModels enum specification in the header file. The order of the
   // enums specifies the order of execution. The Models[] vector is the primary
   // storage array for the list of models.
-  Models[ePropagate]         = new FGPropagate(this);
-  Models[eInput]             = new FGInput(this);
-  Models[eAtmosphere]        = new FGStandardAtmosphere(this);
-  Models[eWinds]             = new FGWinds(this);
-  Models[eSystems]           = new FGFCS(this);
-  Models[eMassBalance]       = new FGMassBalance(this);
-  Models[eAuxiliary]         = new FGAuxiliary(this);
-  Models[ePropulsion]        = new FGPropulsion(this);
-  Models[eAerodynamics]      = new FGAerodynamics (this);
-  Models[eGroundReactions]   = new FGGroundReactions(this);
-  Models[eExternalReactions] = new FGExternalReactions(this);
-  Models[eBuoyantForces]     = new FGBuoyantForces(this);
-  Models[eAircraft]          = new FGAircraft(this);
-  Models[eAccelerations]     = new FGAccelerations(this);
-  Models[eOutput]            = new FGOutput(this);
+  Models[ePropagate]         = std::make_shared<FGPropagate>(this);
+  Models[eInput]             = std::make_shared<FGInput>(this);
+  Models[eAtmosphere]        = std::make_shared<FGStandardAtmosphere>(this);
+  Models[eWinds]             = std::make_shared<FGWinds>(this);
+  Models[eSystems]           = std::make_shared<FGFCS>(this);
+  Models[eMassBalance]       = std::make_shared<FGMassBalance>(this);
+  Models[eAuxiliary]         = std::make_shared<FGAuxiliary>(this);
+  Models[ePropulsion]        = std::make_shared<FGPropulsion>(this);
+  Models[eAerodynamics]      = std::make_shared<FGAerodynamics> (this);
+  Models[eGroundReactions]   = std::make_shared<FGGroundReactions>(this);
+  Models[eExternalReactions] = std::make_shared<FGExternalReactions>(this);
+  Models[eBuoyantForces]     = std::make_shared<FGBuoyantForces>(this);
+  Models[eAircraft]          = std::make_shared<FGAircraft>(this);
+  Models[eAccelerations]     = std::make_shared<FGAccelerations>(this);
+  Models[eOutput]            = std::make_shared<FGOutput>(this);
 
   // Assign the Model shortcuts for internal executive use only.
-  Propagate = (FGPropagate*)Models[ePropagate];
-  Inertial = (FGInertial*)Models[eInertial];
-  Atmosphere = (FGAtmosphere*)Models[eAtmosphere];
-  Winds = (FGWinds*)Models[eWinds];
-  FCS = (FGFCS*)Models[eSystems];
-  MassBalance = (FGMassBalance*)Models[eMassBalance];
-  Auxiliary = (FGAuxiliary*)Models[eAuxiliary];
-  Propulsion = (FGPropulsion*)Models[ePropulsion];
-  Aerodynamics = (FGAerodynamics*)Models[eAerodynamics];
-  GroundReactions = (FGGroundReactions*)Models[eGroundReactions];
-  ExternalReactions = (FGExternalReactions*)Models[eExternalReactions];
-  BuoyantForces = (FGBuoyantForces*)Models[eBuoyantForces];
-  Aircraft = (FGAircraft*)Models[eAircraft];
-  Accelerations = (FGAccelerations*)Models[eAccelerations];
-  Output = (FGOutput*)Models[eOutput];
+  Propagate         = static_cast<FGPropagate*>(Models[ePropagate].get());
+  Inertial          = static_cast<FGInertial*>(Models[eInertial].get());
+  Input             = static_cast<FGInput*>(Models[eInput].get());
+  Atmosphere        = static_cast<FGAtmosphere*>(Models[eAtmosphere].get());
+  Winds             = static_cast<FGWinds*>(Models[eWinds].get());
+  FCS               = static_cast<FGFCS*>(Models[eSystems].get());
+  MassBalance       = static_cast<FGMassBalance*>(Models[eMassBalance].get());
+  Auxiliary         = static_cast<FGAuxiliary*>(Models[eAuxiliary].get());
+  Propulsion        = static_cast<FGPropulsion*>(Models[ePropulsion].get());
+  Aerodynamics      = static_cast<FGAerodynamics*>(Models[eAerodynamics].get());
+  GroundReactions   = static_cast<FGGroundReactions*>(Models[eGroundReactions].get());
+  ExternalReactions = static_cast<FGExternalReactions*>(Models[eExternalReactions].get());
+  BuoyantForces     = static_cast<FGBuoyantForces*>(Models[eBuoyantForces].get());
+  Aircraft          = static_cast<FGAircraft*>(Models[eAircraft].get());
+  Accelerations     = static_cast<FGAccelerations*>(Models[eAccelerations].get());
+  Output            = static_cast<FGOutput*>(Models[eOutput].get());
 
   // Initialize planet (environment) constants
   LoadPlanetConstants();
 
   // Initialize models
-  for (unsigned int i = 0; i < Models.size(); i++) {
-    // The Input/Output models must not be initialized prior to IC loading
-    if (i == eInput || i == eOutput) continue;
+  InitializeModels();
 
-    LoadInputs(i);
-    Models[i]->InitModel();
-  }
-
-  IC = new FGInitialCondition(this);
-  IC->bind(instance);
+  IC = std::make_shared<FGInitialCondition>(this);
+  IC->bind(instance.get());
 
   modelLoaded = false;
 
@@ -289,18 +269,135 @@ bool FGFDMExec::Allocate(void)
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
+std::shared_ptr<FGPropagate> FGFDMExec::GetPropagate(void) const
+{
+  return static_pointer_cast<FGPropagate>(Models[ePropagate]);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+std::shared_ptr<FGInertial> FGFDMExec::GetInertial(void) const
+{
+  return static_pointer_cast<FGInertial>(Models[eInertial]);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+std::shared_ptr<FGInput> FGFDMExec::GetInput(void) const
+{
+  return static_pointer_cast<FGInput>(Models[eInput]);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+std::shared_ptr<FGAtmosphere> FGFDMExec::GetAtmosphere(void) const
+{
+  return static_pointer_cast<FGAtmosphere>(Models[eAtmosphere]);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+std::shared_ptr<FGWinds> FGFDMExec::GetWinds(void) const
+{
+  return static_pointer_cast<FGWinds>(Models[eWinds]);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+std::shared_ptr<FGFCS> FGFDMExec::GetFCS(void) const
+{
+  return static_pointer_cast<FGFCS>(Models[eSystems]);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+std::shared_ptr<FGMassBalance> FGFDMExec::GetMassBalance(void) const
+{
+  return static_pointer_cast<FGMassBalance>(Models[eMassBalance]);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+std::shared_ptr<FGAuxiliary> FGFDMExec::GetAuxiliary(void) const
+{
+  return static_pointer_cast<FGAuxiliary>(Models[eAuxiliary]);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+std::shared_ptr<FGPropulsion> FGFDMExec::GetPropulsion(void) const
+{
+  return static_pointer_cast<FGPropulsion>(Models[ePropulsion]);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+std::shared_ptr<FGAerodynamics> FGFDMExec::GetAerodynamics(void) const
+{
+  return static_pointer_cast<FGAerodynamics>(Models[eAerodynamics]);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+std::shared_ptr<FGGroundReactions> FGFDMExec::GetGroundReactions(void) const
+{
+  return static_pointer_cast<FGGroundReactions>(Models[eGroundReactions]);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+std::shared_ptr<FGExternalReactions> FGFDMExec::GetExternalReactions(void) const
+{
+  return static_pointer_cast<FGExternalReactions>(Models[eExternalReactions]);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+std::shared_ptr<FGBuoyantForces> FGFDMExec::GetBuoyantForces(void) const
+{
+  return static_pointer_cast<FGBuoyantForces>(Models[eBuoyantForces]);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+std::shared_ptr<FGAircraft> FGFDMExec::GetAircraft(void) const
+{
+  return static_pointer_cast<FGAircraft>(Models[eAircraft]);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+std::shared_ptr<FGAccelerations> FGFDMExec::GetAccelerations(void) const
+{
+  return static_pointer_cast<FGAccelerations>(Models[eAccelerations]);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+std::shared_ptr<FGOutput> FGFDMExec::GetOutput(void) const
+{
+  return static_pointer_cast<FGOutput>(Models[eOutput]);
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+void FGFDMExec::InitializeModels(void)
+{
+  for (unsigned int i = 0; i < Models.size(); i++) {
+    // The Input/Output models must not be initialized prior to IC loading
+    if (i == eInput || i == eOutput) continue;
+
+    LoadInputs(i);
+    Models[i]->InitModel();
+  }
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
 bool FGFDMExec::DeAllocate(void)
 {
 
-  for (unsigned int i=0; i<eNumStandardModels; i++) delete Models[i];
   Models.clear();
-
-  delete Script;
-  delete IC;
-  delete Trim;
-
-  Error       = 0;
-
   modelLoaded = false;
   return modelLoaded;
 }
@@ -313,15 +410,15 @@ bool FGFDMExec::Run(void)
 
   Debug(2);
 
-  for (unsigned int i=1; i<ChildFDMList.size(); i++) {
-    ChildFDMList[i]->AssignState( (FGPropagate*)Models[ePropagate] ); // Transfer state to the child FDM
-    ChildFDMList[i]->Run();
+  for (auto &ChildFDM: ChildFDMList) {
+    ChildFDM->AssignState(Propagate); // Transfer state to the child FDM
+    ChildFDM->Run();
   }
 
   IncrTime();
 
   // returns true if success, false if complete
-  if (Script != 0 && !IntegrationSuspended()) success = Script->RunScript();
+  if (Script && !IntegrationSuspended()) success = Script->RunScript();
 
   for (unsigned int i = 0; i < Models.size(); i++) {
     switch (i)
@@ -354,13 +451,6 @@ bool FGFDMExec::Run(void)
     }
   }
 
-  if (ResetMode) {
-    unsigned int mode = ResetMode;
-
-    ResetMode = 0;
-    ResetToInitialConditions(mode);
-  }
-
   if (Terminate) success = false;
 
   return success;
@@ -379,11 +469,12 @@ void FGFDMExec::LoadInputs(unsigned int idx)
   case eInput:
     break;
   case eInertial:
-    Inertial->in.Radius        = Propagate->GetRadius();
-    Inertial->in.Latitude      = Propagate->GetLatitude();
+    Inertial->in.Position      = Propagate->GetLocation();
     break;
   case eAtmosphere:
-    Atmosphere->in.altitudeASL = Propagate->GetAltitudeASL();
+    Atmosphere->in.altitudeASL     = Propagate->GetAltitudeASL();
+    Atmosphere->in.GeodLatitudeDeg = Propagate->GetGeodLatitudeDeg();
+    Atmosphere->in.LongitudeDeg    = Propagate->GetLongitudeDeg();
     break;
   case eWinds:
     Winds->in.AltitudeASL      = Propagate->GetAltitudeASL();
@@ -396,8 +487,6 @@ void FGFDMExec::LoadInputs(unsigned int idx)
   case eAuxiliary:
     Auxiliary->in.Pressure     = Atmosphere->GetPressure();
     Auxiliary->in.Density      = Atmosphere->GetDensity();
-    Auxiliary->in.DensitySL    = Atmosphere->GetDensitySL();
-    Auxiliary->in.PressureSL   = Atmosphere->GetPressureSL();
     Auxiliary->in.Temperature  = Atmosphere->GetTemperature();
     Auxiliary->in.SoundSpeed   = Atmosphere->GetSoundSpeed();
     Auxiliary->in.KinematicViscosity = Atmosphere->GetKinematicViscosity();
@@ -421,11 +510,8 @@ void FGFDMExec::LoadInputs(unsigned int idx)
     Auxiliary->in.SinTht       = Propagate->GetSinEuler(eTht);
     Auxiliary->in.CosPhi       = Propagate->GetCosEuler(ePhi);
     Auxiliary->in.SinPhi       = Propagate->GetSinEuler(ePhi);
-    Auxiliary->in.Psi          = Propagate->GetEuler(ePsi);
     Auxiliary->in.TotalWindNED = Winds->GetTotalWindNED();
     Auxiliary->in.TurbPQR      = Winds->GetTurbPQR();
-    Auxiliary->in.WindPsi      = Winds->GetWindPsi();
-    Auxiliary->in.Vwind        = Winds->GetTotalWindNED().Magnitude();
     break;
   case eSystems:
     // Dynamic inputs come into the components that FCS manages through properties
@@ -454,7 +540,7 @@ void FGFDMExec::LoadInputs(unsigned int idx)
     Propulsion->in.PropAdvance      = FCS->GetPropAdvance();
     Propulsion->in.PropFeather      = FCS->GetPropFeather();
     Propulsion->in.H_agl            = Propagate->GetDistanceAGL();
-    Propulsion->in.PQR              = Propagate->GetPQR();
+    Propulsion->in.PQRi             = Propagate->GetPQRi();
 
     break;
   case eAerodynamics:
@@ -494,7 +580,7 @@ void FGFDMExec::LoadInputs(unsigned int idx)
     BuoyantForces->in.Density     = Atmosphere->GetDensity();
     BuoyantForces->in.Pressure    = Atmosphere->GetPressure();
     BuoyantForces->in.Temperature = Atmosphere->GetTemperature();
-    BuoyantForces->in.gravity     = Inertial->gravity();
+    BuoyantForces->in.gravity     = Inertial->GetGravity().Magnitude();
     break;
   case eMassBalance:
     MassBalance->in.GasInertia  = BuoyantForces->GetGasMassInertia();
@@ -503,6 +589,7 @@ void FGFDMExec::LoadInputs(unsigned int idx)
     MassBalance->in.TanksWeight = Propulsion->GetTanksWeight();
     MassBalance->in.TanksMoment = Propulsion->GetTanksMoment();
     MassBalance->in.TankInertia = Propulsion->CalculateTankInertias();
+    MassBalance->in.WOW         = GroundReactions->GetWOW();
     break;
   case eAircraft:
     Aircraft->in.AeroForce     = Aerodynamics->GetForces();
@@ -527,8 +614,7 @@ void FGFDMExec::LoadInputs(unsigned int idx)
     Accelerations->in.GroundMoment  = GroundReactions->GetMoments();
     Accelerations->in.Force    = Aircraft->GetForces();
     Accelerations->in.GroundForce   = GroundReactions->GetForces();
-    Accelerations->in.GAccel   = Inertial->GetGAccel(Propagate->GetRadius());
-    Accelerations->in.J2Grav  = Inertial->GetGravityJ2(Propagate->GetLocation());
+    Accelerations->in.vGravAccel = Inertial->GetGravity();
     Accelerations->in.vPQRi    = Propagate->GetPQRi();
     Accelerations->in.vPQR     = Propagate->GetPQR();
     Accelerations->in.vUVW     = Propagate->GetUVW();
@@ -548,11 +634,13 @@ void FGFDMExec::LoadInputs(unsigned int idx)
 
 void FGFDMExec::LoadPlanetConstants(void)
 {
-  Propagate->in.vOmegaPlanet     = Inertial->GetOmegaPlanet();
-  Accelerations->in.vOmegaPlanet = Inertial->GetOmegaPlanet();
-  Propagate->in.SemiMajor        = Inertial->GetSemimajor();
-  Propagate->in.SemiMinor        = Inertial->GetSemiminor();
-  Auxiliary->in.SLGravity        = Inertial->SLgravity();
+  Propagate->in.vOmegaPlanet       = Inertial->GetOmegaPlanet();
+  Accelerations->in.vOmegaPlanet   = Inertial->GetOmegaPlanet();
+  Propagate->in.SemiMajor          = Inertial->GetSemimajor();
+  Propagate->in.SemiMinor          = Inertial->GetSemiminor();
+  Propagate->in.GM                 = Inertial->GetGM();
+  Auxiliary->in.StandardGravity    = Inertial->GetStandardGravity();
+  Auxiliary->in.StdDaySLsoundspeed = Atmosphere->StdDaySLsoundspeed;
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -566,10 +654,7 @@ void FGFDMExec::LoadModelConstants(void)
   Aerodynamics->in.Wingspan      = Aircraft->GetWingSpan();
   Auxiliary->in.Wingspan         = Aircraft->GetWingSpan();
   Auxiliary->in.Wingchord        = Aircraft->Getcbar();
-  Auxiliary->in.PitotAngle       = Aircraft->GetPitotAngle();
   GroundReactions->in.vXYZcg     = MassBalance->GetXYZcg();
-
-  LoadPlanetConstants();
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -577,10 +662,8 @@ void FGFDMExec::LoadModelConstants(void)
 
 bool FGFDMExec::RunIC(void)
 {
-  FGPropulsion* propulsion = (FGPropulsion*)Models[ePropulsion];
-
   SuspendIntegration(); // saves the integration rate, dt, then sets it to 0.0.
-  Initialize(IC);
+  Initialize(IC.get());
 
   Models[eInput]->InitModel();
   Models[eOutput]->InitModel();
@@ -592,18 +675,20 @@ bool FGFDMExec::RunIC(void)
   if (debug_lvl > 0) {
     MassBalance->GetMassPropertiesReport(0);
 
-    cout << endl << fgblue << highint
-         << "End of vehicle configuration loading." << endl
-         << "-------------------------------------------------------------------------------"
-         << reset << std::setprecision(6) << endl;
+    FGLogging log(Log, LogLevel::DEBUG);
+    log << endl << LogFormat::BLUE << LogFormat::BOLD
+        << "End of vehicle configuration loading." << endl
+        << "-------------------------------------------------------------------------------"
+        << LogFormat::RESET << std::setprecision(6) << endl;
   }
 
-  for (unsigned int n=0; n < propulsion->GetNumEngines(); ++n) {
+  for (unsigned int n=0; n < Propulsion->GetNumEngines(); ++n) {
     if (IC->IsEngineRunning(n)) {
       try {
-        propulsion->InitRunning(n);
+        Propulsion->InitRunning(n);
       } catch (const string& str) {
-        cerr << str << endl;
+        FGLogging log(Log, LogLevel::ERROR);
+        log << str << endl;
         return false;
       }
     }
@@ -614,10 +699,11 @@ bool FGFDMExec::RunIC(void)
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-void FGFDMExec::Initialize(FGInitialCondition* FGIC)
+void FGFDMExec::Initialize(const FGInitialCondition* FGIC)
 {
   Propagate->SetInitialState(FGIC);
   Winds->SetWindNED(FGIC->GetWindNEDFpsIC());
+  Auxiliary->SetInitialState(FGIC);
   Run();
 }
 
@@ -627,22 +713,19 @@ void FGFDMExec::ResetToInitialConditions(int mode)
 {
   if (Constructing) return;
 
-  if (mode == 1) Output->SetStartNewOutput();
+  // mode flags
 
-  for (unsigned int i = 0; i < Models.size(); i++) {
-    // The Input/Output models will be initialized during the RunIC() execution
-    if (i == eInput || i == eOutput) continue;
+  if (mode & START_NEW_OUTPUT) Output->SetStartNewOutput();
 
-    LoadInputs(i);
-    Models[i]->InitModel();
-  }
+  InitializeModels();
 
   if (Script)
     Script->ResetEvents();
   else
     Setsim_time(0.0);
 
-  RunIC();
+  if (!(mode & DONT_EXECUTE_RUN_IC))
+    RunIC();
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -663,37 +746,109 @@ void FGFDMExec::SetHoldDown(bool hd)
 vector <string> FGFDMExec::EnumerateFDMs(void)
 {
   vector <string> FDMList;
-  FGAircraft* Aircraft = (FGAircraft*)Models[eAircraft];
-
   FDMList.push_back(Aircraft->GetAircraftName());
 
-  for (unsigned int i=1; i<ChildFDMList.size(); i++) {
-    FDMList.push_back(ChildFDMList[i]->exec->GetAircraft()->GetAircraftName());
-  }
+  for (auto &ChildFDM: ChildFDMList)
+    FDMList.push_back(ChildFDM->exec->GetAircraft()->GetAircraftName());
 
   return FDMList;
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-bool FGFDMExec::LoadScript(const string& script, double deltaT, const string& initfile)
+bool FGFDMExec::LoadScript(const SGPath& script, double deltaT,
+                           const SGPath& initfile)
 {
-  bool result;
+  Script = std::make_shared<FGScript>(this);
+  return Script->LoadScript(GetFullPath(script), deltaT, initfile);
+}
 
-  Script = new FGScript(this);
-  result = Script->LoadScript(RootDir + script, deltaT, initfile);
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+bool FGFDMExec::LoadPlanet(const SGPath& PlanetPath, bool useAircraftPath)
+{
+  SGPath PlanetFileName;
+
+  if(useAircraftPath && PlanetPath.isRelative()) {
+    PlanetFileName = AircraftPath/PlanetPath.utf8Str();
+  } else {
+    PlanetFileName = PlanetPath;
+  }
+
+  FGXMLFileRead XMLFileRead;
+  Element* document = XMLFileRead.LoadXMLDocument(PlanetFileName);
+
+  // Make sure that the document is valid
+  if (!document) {
+    LogException err(Log);
+    err << "File: " << PlanetFileName << " could not be read." << endl;
+    throw err;
+  }
+
+  if (document->GetName() != "planet") {
+    XMLLogException err(Log, document);
+    err << "File: " << PlanetFileName << " is not a planet file." << endl;
+    throw err;
+  }
+
+  bool result = LoadPlanet(document);
+
+  if (!result) {
+    FGXMLLogging log(Log, document, LogLevel::ERROR);
+    log << endl << "Planet element has problems in file " << PlanetFileName << endl;
+  }
 
   return result;
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-bool FGFDMExec::LoadModel(const string& AircraftPath, const string& EnginePath, const string& SystemsPath,
-                const string& model, bool addModelToPath)
+bool FGFDMExec::LoadPlanet(Element* element)
 {
-  FGFDMExec::AircraftPath = RootDir + AircraftPath;
-  FGFDMExec::EnginePath = RootDir + EnginePath;
-  FGFDMExec::SystemsPath = RootDir + SystemsPath;
+  bool result = Models[eInertial]->Load(element);
+
+  if (result) {
+    // Reload the planet constants and re-initialize the models.
+    LoadPlanetConstants();
+    IC->InitializeIC();
+    InitializeModels();
+
+    // Process the atmosphere element. This element is OPTIONAL.
+    Element* atm_element = element->FindElement("atmosphere");
+    if (atm_element && atm_element->HasAttribute("model")) {
+      string model = atm_element->GetAttributeValue("model");
+      if (model == "MSIS") {
+        // Replace the existing atmosphere model
+        instance->Unbind(Models[eAtmosphere]);
+        Models[eAtmosphere] = std::make_shared<FGMSIS>(this);
+        Atmosphere = static_cast<FGAtmosphere*>(Models[eAtmosphere].get());
+
+        // Model initialization sequence
+        LoadInputs(eAtmosphere);
+        Atmosphere->InitModel();
+        result = Atmosphere->Load(atm_element);
+        if (!result) {
+          FGLogging log(Log, LogLevel::ERROR);
+          log << endl << "Incorrect definition of <atmosphere>." << endl;
+          return result;
+        }
+        InitializeModels();
+      }
+    }
+  }
+
+  return result;
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+bool FGFDMExec::LoadModel(const SGPath& AircraftPath, const SGPath& EnginePath,
+                          const SGPath& SystemsPath, const string& model,
+                          bool addModelToPath)
+{
+  FGFDMExec::AircraftPath = GetFullPath(AircraftPath);
+  FGFDMExec::EnginePath = GetFullPath(EnginePath);
+  FGFDMExec::SystemsPath = GetFullPath(SystemsPath);
 
   return LoadModel(model, addModelToPath);
 }
@@ -702,20 +857,21 @@ bool FGFDMExec::LoadModel(const string& AircraftPath, const string& EnginePath, 
 
 bool FGFDMExec::LoadModel(const string& model, bool addModelToPath)
 {
-  string aircraftCfgFileName;
+  SGPath aircraftCfgFileName;
   bool result = false; // initialize result to false, indicating input file not yet read
 
   modelName = model; // Set the class modelName attribute
 
-  if( AircraftPath.empty() || EnginePath.empty() || SystemsPath.empty()) {
-    cerr << "Error: attempted to load aircraft with undefined ";
-    cerr << "aircraft, engine, and system paths" << endl;
+  if( AircraftPath.isNull() || EnginePath.isNull() || SystemsPath.isNull()) {
+    FGLogging log(Log, LogLevel::ERROR);
+    log << "Error: attempted to load aircraft with undefined "
+        << "aircraft, engine, and system paths" << endl;
     return false;
   }
 
   FullAircraftPath = AircraftPath;
-  if (addModelToPath) FullAircraftPath += "/" + model;
-  aircraftCfgFileName = FullAircraftPath + "/" + model + ".xml";
+  if (addModelToPath) FullAircraftPath.append(model);
+  aircraftCfgFileName = FullAircraftPath/(model + ".xml");
 
   if (modelLoaded) {
     DeAllocate();
@@ -738,60 +894,79 @@ bool FGFDMExec::LoadModel(const string& model, bool addModelToPath)
     if (element) {
       result = ReadFileHeader(element);
       if (!result) {
-        cerr << endl << "Aircraft fileheader element has problems in file " << aircraftCfgFileName << endl;
+        FGXMLLogging log(Log, element, LogLevel::ERROR);
+        log << endl << "Aircraft fileheader element has problems in file " << aircraftCfgFileName << endl;
         return result;
       }
     }
 
     if (IsChild) debug_lvl = 0;
 
+    // Process the planet element. This element is OPTIONAL.
+    element = document->FindElement("planet");
+    if (element) {
+      result = LoadPlanet(element);
+      if (!result) {
+        FGXMLLogging log(Log, element, LogLevel::ERROR);
+        log << endl << "Planet element has problems in file " << aircraftCfgFileName << endl;
+        return result;
+      }
+    }
+
     // Process the metrics element. This element is REQUIRED.
     element = document->FindElement("metrics");
     if (element) {
-      result = ((FGAircraft*)Models[eAircraft])->Load(element);
+      result = Models[eAircraft]->Load(element);
       if (!result) {
-        cerr << endl << "Aircraft metrics element has problems in file " << aircraftCfgFileName << endl;
+        FGXMLLogging log(Log, element, LogLevel::ERROR);
+        log << endl << "Aircraft metrics element has problems in file " << aircraftCfgFileName << endl;
         return result;
       }
     } else {
-      cerr << endl << "No metrics element was found in the aircraft config file." << endl;
+      FGLogging log(Log, LogLevel::ERROR);
+      log << endl << "No metrics element was found in the aircraft config file." << endl;
       return false;
     }
 
     // Process the mass_balance element. This element is REQUIRED.
     element = document->FindElement("mass_balance");
     if (element) {
-      result = ((FGMassBalance*)Models[eMassBalance])->Load(element);
+      result = Models[eMassBalance]->Load(element);
       if (!result) {
-        cerr << endl << "Aircraft mass_balance element has problems in file " << aircraftCfgFileName << endl;
+        FGXMLLogging log(Log, element, LogLevel::ERROR);
+        log << endl << "Aircraft mass_balance element has problems in file " << aircraftCfgFileName << endl;
         return result;
       }
     } else {
-      cerr << endl << "No mass_balance element was found in the aircraft config file." << endl;
+      FGLogging log(Log, LogLevel::ERROR);
+      log << endl << "No mass_balance element was found in the aircraft config file." << endl;
       return false;
     }
 
     // Process the ground_reactions element. This element is REQUIRED.
     element = document->FindElement("ground_reactions");
     if (element) {
-      result = ((FGGroundReactions*)Models[eGroundReactions])->Load(element);
+      result = Models[eGroundReactions]->Load(element);
       if (!result) {
-        cerr << endl << element->ReadFrom()
-             << "Aircraft ground_reactions element has problems in file "
-             << aircraftCfgFileName << endl;
+        FGXMLLogging log(Log, element, LogLevel::ERROR);
+        log << endl
+            << "Aircraft ground_reactions element has problems in file "
+            << aircraftCfgFileName << endl;
         return result;
       }
     } else {
-      cerr << endl << "No ground_reactions element was found in the aircraft config file." << endl;
+      FGLogging log(Log, LogLevel::ERROR);
+      log << endl << "No ground_reactions element was found in the aircraft config file." << endl;
       return false;
     }
 
     // Process the external_reactions element. This element is OPTIONAL.
     element = document->FindElement("external_reactions");
     if (element) {
-      result = ((FGExternalReactions*)Models[eExternalReactions])->Load(element);
+      result = Models[eExternalReactions]->Load(element);
       if (!result) {
-        cerr << endl << "Aircraft external_reactions element has problems in file " << aircraftCfgFileName << endl;
+        FGXMLLogging log(Log, element, LogLevel::ERROR);
+        log << endl << "Aircraft external_reactions element has problems in file " << aircraftCfgFileName << endl;
         return result;
       }
     }
@@ -799,9 +974,10 @@ bool FGFDMExec::LoadModel(const string& model, bool addModelToPath)
     // Process the buoyant_forces element. This element is OPTIONAL.
     element = document->FindElement("buoyant_forces");
     if (element) {
-      result = ((FGBuoyantForces*)Models[eBuoyantForces])->Load(element);
+      result = Models[eBuoyantForces]->Load(element);
       if (!result) {
-        cerr << endl << "Aircraft buoyant_forces element has problems in file " << aircraftCfgFileName << endl;
+        FGXMLLogging log(Log, element, LogLevel::ERROR);
+        log << endl << "Aircraft buoyant_forces element has problems in file " << aircraftCfgFileName << endl;
         return result;
       }
     }
@@ -809,21 +985,23 @@ bool FGFDMExec::LoadModel(const string& model, bool addModelToPath)
     // Process the propulsion element. This element is OPTIONAL.
     element = document->FindElement("propulsion");
     if (element) {
-      result = ((FGPropulsion*)Models[ePropulsion])->Load(element);
+      result = Propulsion->Load(element);
       if (!result) {
-        cerr << endl << "Aircraft propulsion element has problems in file " << aircraftCfgFileName << endl;
+        FGXMLLogging log(Log, element, LogLevel::ERROR);
+        log << endl << "Aircraft propulsion element has problems in file " << aircraftCfgFileName << endl;
         return result;
       }
-      for (unsigned int i=0; i<((FGPropulsion*)Models[ePropulsion])->GetNumEngines(); i++)
-        ((FGFCS*)Models[eSystems])->AddThrottle();
+      for (unsigned int i=0; i < Propulsion->GetNumEngines(); i++)
+        FCS->AddThrottle();
     }
 
     // Process the system element[s]. This element is OPTIONAL, and there may be more than one.
     element = document->FindElement("system");
     while (element) {
-      result = ((FGFCS*)Models[eSystems])->Load(element);
+      result = Models[eSystems]->Load(element);
       if (!result) {
-        cerr << endl << "Aircraft system element has problems in file " << aircraftCfgFileName << endl;
+        FGXMLLogging log(Log, element, LogLevel::ERROR);
+        log << endl << "Aircraft system element has problems in file " << aircraftCfgFileName << endl;
         return result;
       }
       element = document->FindNextElement("system");
@@ -832,9 +1010,10 @@ bool FGFDMExec::LoadModel(const string& model, bool addModelToPath)
     // Process the autopilot element. This element is OPTIONAL.
     element = document->FindElement("autopilot");
     if (element) {
-      result = ((FGFCS*)Models[eSystems])->Load(element);
+      result = Models[eSystems]->Load(element);
       if (!result) {
-        cerr << endl << "Aircraft autopilot element has problems in file " << aircraftCfgFileName << endl;
+        FGXMLLogging log(Log, element, LogLevel::ERROR);
+        log << endl << "Aircraft autopilot element has problems in file " << aircraftCfgFileName << endl;
         return result;
       }
     }
@@ -842,9 +1021,10 @@ bool FGFDMExec::LoadModel(const string& model, bool addModelToPath)
     // Process the flight_control element. This element is OPTIONAL.
     element = document->FindElement("flight_control");
     if (element) {
-      result = ((FGFCS*)Models[eSystems])->Load(element);
+      result = Models[eSystems]->Load(element);
       if (!result) {
-        cerr << endl << "Aircraft flight_control element has problems in file " << aircraftCfgFileName << endl;
+        FGXMLLogging log(Log, element, LogLevel::ERROR);
+        log << endl << "Aircraft flight_control element has problems in file " << aircraftCfgFileName << endl;
         return result;
       }
     }
@@ -852,19 +1032,21 @@ bool FGFDMExec::LoadModel(const string& model, bool addModelToPath)
     // Process the aerodynamics element. This element is OPTIONAL, but almost always expected.
     element = document->FindElement("aerodynamics");
     if (element) {
-      result = ((FGAerodynamics*)Models[eAerodynamics])->Load(element);
+      result = Models[eAerodynamics]->Load(element);
       if (!result) {
-        cerr << endl << "Aircraft aerodynamics element has problems in file " << aircraftCfgFileName << endl;
+        FGXMLLogging log(Log, element, LogLevel::ERROR);
+        log << endl << "Aircraft aerodynamics element has problems in file " << aircraftCfgFileName << endl;
         return result;
       }
     } else {
-      cerr << endl << "No expected aerodynamics element was found in the aircraft config file." << endl;
+      FGLogging log(Log, LogLevel::ERROR);
+      log << endl << "No expected aerodynamics element was found in the aircraft config file." << endl;
     }
 
     // Process the input element. This element is OPTIONAL, and there may be more than one.
     element = document->FindElement("input");
     while (element) {
-      if (!static_cast<FGInput*>(Models[eInput])->Load(element))
+      if (!Input->Load(element))
         return false;
 
       element = document->FindNextElement("input");
@@ -874,7 +1056,7 @@ bool FGFDMExec::LoadModel(const string& model, bool addModelToPath)
     // more than one.
     element = document->FindElement("output");
     while (element) {
-      if (!static_cast<FGOutput*>(Models[eOutput])->Load(element))
+      if (!Output->Load(element))
         return false;
 
       element = document->FindNextElement("output");
@@ -885,7 +1067,8 @@ bool FGFDMExec::LoadModel(const string& model, bool addModelToPath)
     if (element) {
       result = ReadChild(element);
       if (!result) {
-        cerr << endl << "Aircraft child element has problems in file " << aircraftCfgFileName << endl;
+        FGXMLLogging log(Log, element, LogLevel::ERROR);
+        log << endl << "Aircraft child element has problems in file " << aircraftCfgFileName << endl;
         return result;
       }
     }
@@ -899,9 +1082,10 @@ bool FGFDMExec::LoadModel(const string& model, bool addModelToPath)
     if (IsChild) debug_lvl = saved_debug_lvl;
 
   } else {
-    cerr << fgred
-         << "  JSBSim failed to open the configuration file: " << aircraftCfgFileName
-         << fgdef << endl;
+    FGLogging log(Log, LogLevel::ERROR);
+    log << LogFormat::RED
+        << "  JSBSim failed to open the configuration file: " << aircraftCfgFileName
+        << LogFormat::DEFAULT << endl;
   }
 
   for (unsigned int i=0; i< Models.size(); i++) LoadInputs(i);
@@ -909,7 +1093,7 @@ bool FGFDMExec::LoadModel(const string& model, bool addModelToPath)
   if (result) {
     struct PropertyCatalogStructure masterPCS;
     masterPCS.base_string = "";
-    masterPCS.node = Root->GetNode();
+    masterPCS.node = Root;
     BuildPropertyCatalog(&masterPCS);
   }
 
@@ -918,20 +1102,20 @@ bool FGFDMExec::LoadModel(const string& model, bool addModelToPath)
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-string FGFDMExec::GetPropulsionTankReport()
+string FGFDMExec::GetPropulsionTankReport() const
 {
-  return ((FGPropulsion*)Models[ePropulsion])->GetPropulsionTankReport();
+  return Propulsion->GetPropulsionTankReport();
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 void FGFDMExec::BuildPropertyCatalog(struct PropertyCatalogStructure* pcs)
 {
-  struct PropertyCatalogStructure* pcsNew = new struct PropertyCatalogStructure;
+  auto pcsNew = std::make_unique<struct PropertyCatalogStructure>();
 
   for (int i=0; i<pcs->node->nChildren(); i++) {
     string access="";
-    pcsNew->base_string = pcs->base_string + "/" + pcs->node->getChild(i)->getName();
+    pcsNew->base_string = pcs->base_string + "/" + pcs->node->getChild(i)->getNameString();
     int node_idx = pcs->node->getChild(i)->getIndex();
     if (node_idx != 0) {
       pcsNew->base_string = CreateIndexedPropertyName(pcsNew->base_string, node_idx);
@@ -944,22 +1128,21 @@ void FGFDMExec::BuildPropertyCatalog(struct PropertyCatalogStructure* pcs)
       if (pcs->node->getChild(i)->getAttribute(SGPropertyNode::WRITE)) access+="W";
       PropertyCatalog.push_back(pcsNew->base_string+" ("+access+")");
     } else {
-      pcsNew->node = (FGPropertyNode*)pcs->node->getChild(i);
-      BuildPropertyCatalog(pcsNew);
+      pcsNew->node = pcs->node->getChild(i);
+      BuildPropertyCatalog(pcsNew.get());
     }
   }
-  delete pcsNew;
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-string FGFDMExec::QueryPropertyCatalog(const string& in)
+string FGFDMExec::QueryPropertyCatalog(const string& in, const string& end_of_line)
 {
-  string results="";
-  for (unsigned i=0; i<PropertyCatalog.size(); i++) {
-    if (PropertyCatalog[i].find(in) != string::npos) results += PropertyCatalog[i] + "\n";
+  string results;
+  for (auto &catalogElm: PropertyCatalog) {
+    if (catalogElm.find(in) != string::npos) results += catalogElm + end_of_line;
   }
-  if (results.empty()) return "No matches found\n";
+  if (results.empty()) return "No matches found"+end_of_line;
   return results;
 }
 
@@ -967,47 +1150,47 @@ string FGFDMExec::QueryPropertyCatalog(const string& in)
 
 void FGFDMExec::PrintPropertyCatalog(void)
 {
-  cout << endl;
-  cout << "  " << fgblue << highint << underon << "Property Catalog for "
-       << modelName << reset << endl << endl;
-  for (unsigned i=0; i<PropertyCatalog.size(); i++) {
-    cout << "    " << PropertyCatalog[i] << endl;
-  }
+  FGLogging log(Log, LogLevel::INFO);
+  log << endl
+      << "  " << LogFormat::BLUE << highint << LogFormat::UNDERLINE_ON
+      << "Property Catalog for " << modelName << LogFormat::RESET << endl << endl;
+  for (auto &catalogElm: PropertyCatalog)
+    log << "    " << catalogElm << endl;
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 void FGFDMExec::PrintSimulationConfiguration(void) const
 {
-  cout << endl << "Simulation Configuration" << endl << "------------------------" << endl;
-  cout << MassBalance->Name << endl;
-  cout << GroundReactions->Name << endl;
-  cout << Aerodynamics->Name << endl;
-  cout << Propulsion->Name << endl;
+  FGLogging log(Log, LogLevel::INFO);
+  log << endl << "Simulation Configuration" << endl << "------------------------" << endl;
+  log << MassBalance->GetName() << endl;
+  log << GroundReactions->GetName() << endl;
+  log << Aerodynamics->GetName() << endl;
+  log << Propulsion->GetName() << endl;
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 bool FGFDMExec::ReadFileHeader(Element* el)
 {
-  bool result = true; // true for success
-
-  if (debug_lvl == 0) return result;
+  FGLogging log(Log, LogLevel::DEBUG);
 
   if (IsChild) {
-    cout << endl <<highint << fgblue << "Reading child model: " << IdFDM << reset << endl << endl;
+    log << endl << LogFormat::BOLD << LogFormat::BLUE << "Reading child model: "
+        << IdFDM << LogFormat::RESET << endl << endl;
   }
 
   if (el->FindElement("description"))
-    cout << "  Description:   " << el->FindElement("description")->GetDataLine() << endl;
+    log << "  Description:   " << el->FindElement("description")->GetDataLine() << endl;
   if (el->FindElement("author"))
-    cout << "  Model Author:  " << el->FindElement("author")->GetDataLine() << endl;
+    log << "  Model Author:  " << el->FindElement("author")->GetDataLine() << endl;
   if (el->FindElement("filecreationdate"))
-    cout << "  Creation Date: " << el->FindElement("filecreationdate")->GetDataLine() << endl;
+    log << "  Creation Date: " << el->FindElement("filecreationdate")->GetDataLine() << endl;
   if (el->FindElement("version"))
-    cout << "  Version:       " << el->FindElement("version")->GetDataLine() << endl;
+    log << "  Version:       " << el->FindElement("version")->GetDataLine() << endl;
 
-  return result;
+  return true;
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1019,52 +1202,63 @@ bool FGFDMExec::ReadPrologue(Element* el) // el for ReadPrologue is the document
   if (!el) return false;
 
   string AircraftName = el->GetAttributeValue("name");
-  ((FGAircraft*)Models[eAircraft])->SetAircraftName(AircraftName);
+  Aircraft->SetAircraftName(AircraftName);
 
-  if (debug_lvl & 1) cout << underon << "Reading Aircraft Configuration File"
-            << underoff << ": " << highint << AircraftName << normint << endl;
+  if (debug_lvl & 1) {
+    FGLogging log(Log, LogLevel::INFO);
+    log << LogFormat::UNDERLINE_ON << "Reading Aircraft Configuration File"
+        << LogFormat::UNDERLINE_OFF << ": " << LogFormat::BOLD << AircraftName
+        << LogFormat::NORMAL << endl;
+  }
 
   CFGVersion = el->GetAttributeValue("version");
   Release    = el->GetAttributeValue("release");
 
-  if (debug_lvl & 1)
-    cout << "                            Version: " << highint << CFGVersion
-                                                    << normint << endl;
+  if (debug_lvl & 1) {
+    FGLogging log(Log, LogLevel::INFO);
+    log << "                            Version: "
+        << LogFormat::BOLD << CFGVersion << LogFormat::NORMAL << endl;
+  }
   if (CFGVersion != needed_cfg_version) {
-    cerr << endl << fgred << "YOU HAVE AN INCOMPATIBLE CFG FILE FOR THIS AIRCRAFT."
+    FGLogging log(Log, LogLevel::ERROR);
+    log << endl << LogFormat::RED << "YOU HAVE AN INCOMPATIBLE CFG FILE FOR THIS AIRCRAFT."
             " RESULTS WILL BE UNPREDICTABLE !!" << endl;
-    cerr << "Current version needed is: " << needed_cfg_version << endl;
-    cerr << "         You have version: " << CFGVersion << endl << fgdef << endl;
+    log << "Current version needed is: " << needed_cfg_version << endl;
+    log << "         You have version: " << CFGVersion << endl << LogFormat::DEFAULT << endl;
     return false;
   }
 
   if (Release == "ALPHA" && (debug_lvl & 1)) {
-    cout << endl << endl
-         << highint << "This aircraft model is an " << fgred << Release
-         << reset << highint << " release!!!" << endl << endl << reset
-         << "This aircraft model may not even properly load, and probably"
-         << " will not fly as expected." << endl << endl
-         << fgred << highint << "Use this model for development purposes ONLY!!!"
-         << normint << reset << endl << endl;
+    FGLogging log(Log, LogLevel::DEBUG);
+    log << endl << endl
+        << LogFormat::BOLD << "This aircraft model is an " << LogFormat::RED << Release
+        << LogFormat::RESET << LogFormat::BOLD << " release!!!" << endl << endl << LogFormat::RESET
+        << "This aircraft model may not even properly load, and probably"
+        << " will not fly as expected." << endl << endl
+        << LogFormat::RED << LogFormat::BOLD << "Use this model for development purposes ONLY!!!"
+        << LogFormat::NORMAL << LogFormat::RESET << endl << endl;
   } else if (Release == "BETA" && (debug_lvl & 1)) {
-    cout << endl << endl
-         << highint << "This aircraft model is a " << fgred << Release
-         << reset << highint << " release!!!" << endl << endl << reset
-         << "This aircraft model probably will not fly as expected." << endl << endl
-         << fgblue << highint << "Use this model for development purposes ONLY!!!"
-         << normint << reset << endl << endl;
+    FGLogging log(Log, LogLevel::DEBUG);
+    log << endl << endl
+        << LogFormat::BOLD << "This aircraft model is a " << LogFormat::RED << Release
+        << LogFormat::RESET << LogFormat::BOLD << " release!!!" << endl << endl << LogFormat::RESET
+        << "This aircraft model probably will not fly as expected." << endl << endl
+        << LogFormat::BLUE << LogFormat::BOLD << "Use this model for development purposes ONLY!!!"
+        << LogFormat::NORMAL << LogFormat::RESET << endl << endl;
   } else if (Release == "PRODUCTION" && (debug_lvl & 1)) {
-    cout << endl << endl
-         << highint << "This aircraft model is a " << fgblue << Release
-         << reset << highint << " release." << endl << endl << reset;
+    FGLogging log(Log, LogLevel::DEBUG);
+    log << endl << endl
+        << LogFormat::BOLD << "This aircraft model is a " << LogFormat::BLUE << Release
+        << LogFormat::RESET << LogFormat::BOLD << " release." << endl << endl << LogFormat::RESET;
   } else if (debug_lvl & 1) {
-    cout << endl << endl
-         << highint << "This aircraft model is an " << fgred << Release
-         << reset << highint << " release!!!" << endl << endl << reset
-         << "This aircraft model may not even properly load, and probably"
-         << " will not fly as expected." << endl << endl
-         << fgred << highint << "Use this model for development purposes ONLY!!!"
-         << normint << reset << endl << endl;
+    FGLogging log(Log, LogLevel::DEBUG);
+    log << endl << endl
+        << LogFormat::BOLD << "This aircraft model is an " << LogFormat::RED << Release
+        << LogFormat::RESET << LogFormat::BOLD << " release!!!" << endl << endl << LogFormat::RESET
+        << "This aircraft model may not even properly load, and probably"
+        << " will not fly as expected." << endl << endl
+        << LogFormat::RED << LogFormat::BOLD << "Use this model for development purposes ONLY!!!"
+        << LogFormat::NORMAL << LogFormat::RESET << endl << endl;
   }
 
   return result;
@@ -1082,9 +1276,10 @@ bool FGFDMExec::ReadChild(Element* el)
   // Load the model given the aircraft name
   // reset debug level to prior setting
 
-  struct childData* child = new childData;
+  auto child = std::make_shared<childData>();
 
-  child->exec = new FGFDMExec(Root, FDMctr);
+  auto pm = std::make_unique<FGPropertyManager>(Root);
+  child->exec = std::make_unique<FGFDMExec>(pm.get(), FDMctr);
   child->exec->SetChild(true);
 
   string childAircraft = el->GetAttributeValue("name");
@@ -1102,15 +1297,19 @@ bool FGFDMExec::ReadChild(Element* el)
   if (location) {
     child->Loc = location->FindElementTripletConvertTo("IN");
   } else {
-    cerr << endl << highint << fgred << "  No location was found for this child object!" << reset << endl;
-    exit(-1);
+    XMLLogException err(Log, el);
+    err << "No location was found for this child object!" << endl;
+    throw err;
   }
 
   Element* orientation = el->FindElement("orient");
   if (orientation) {
     child->Orient = orientation->FindElementTripletConvertTo("RAD");
   } else if (debug_lvl > 0) {
-    cerr << endl << highint << "  No orientation was found for this child object! Assuming 0,0,0." << reset << endl;
+    FGLogging log(Log, LogLevel::WARN);
+    log << endl << LogFormat::BOLD
+        << "  No orientation was found for this child object! Assuming 0,0,0."
+        << LogFormat::RESET << endl;
   }
 
   ChildFDMList.push_back(child);
@@ -1120,17 +1319,9 @@ bool FGFDMExec::ReadChild(Element* el)
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-FGPropertyManager* FGFDMExec::GetPropertyManager(void)
+std::shared_ptr<FGTrim> FGFDMExec::GetTrim(void)
 {
-  return instance;
-}
-
-//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-FGTrim* FGFDMExec::GetTrim(void)
-{
-  delete Trim;
-  Trim = new FGTrim(this,tNone);
+  Trim = std::make_shared<FGTrim>(this,tNone);
   return Trim;
 }
 
@@ -1165,16 +1356,28 @@ void FGFDMExec::DoTrim(int mode)
   if (Constructing) return;
 
   if (mode < 0 || mode > JSBSim::tNone)
-    throw("Illegal trimming mode!");
+    throw TrimFailureException("Illegal trimming mode!");
 
   FGTrim trim(this, (JSBSim::TrimMode)mode);
   bool success = trim.DoTrim();
-  trim.Report();
+
+  if (debug_lvl > 0)
+    trim.Report();
 
   if (!success)
-    throw("Trim Failed");
+    throw TrimFailureException("Trim Failed");
 
   trim_completed = 1;
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+void FGFDMExec::DoLinearization(int)
+{
+  double dt0 = this->GetDeltaT();
+  FGLinearization lin(this);
+  lin.WriteScicoslab();
+  this->Setdt(dt0);
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1182,8 +1385,7 @@ void FGFDMExec::DoTrim(int mode)
 void FGFDMExec::SRand(int sr)
 {
   RandomSeed = sr;
-  gaussian_random_number_phase = 0;
-  srand(RandomSeed);
+  RandomGenerator->seed(RandomSeed);
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1194,7 +1396,7 @@ void FGFDMExec::SRand(int sr)
 //       variable is not set, debug_lvl is set to 1 internally
 //    0: This requests JSBSim not to output any messages
 //       whatsoever.
-//    1: This value explicity requests the normal JSBSim
+//    1: This value explicitly requests the normal JSBSim
 //       startup messages
 //    2: This value asks for a message to be printed out when
 //       a class is instantiated
@@ -1209,25 +1411,27 @@ void FGFDMExec::Debug(int from)
 {
   if (debug_lvl <= 0) return;
 
+  FGLogging log(Log, LogLevel::DEBUG);
+
   if (debug_lvl & 1 && IdFDM == 0) { // Standard console startup message output
     if (from == 0) { // Constructor
-      cout << "\n\n     "
-           << "JSBSim Flight Dynamics Model v" << JSBSim_version << endl;
-      cout << "            [JSBSim-ML v" << needed_cfg_version << "]\n\n";
-      cout << "JSBSim startup beginning ...\n\n";
-      if (disperse == 1) cout << "Dispersions are ON." << endl << endl;
+      log << "\n\n     "
+          << "JSBSim Flight Dynamics Model v" << JSBSim_version << endl;
+      log << "            [JSBSim-ML v" << needed_cfg_version << "]\n\n";
+      log << "JSBSim startup beginning ...\n\n";
+      if (disperse == 1) log << "Dispersions are ON." << endl << endl;
     } else if (from == 3) {
-      cout << "\n\nJSBSim startup complete\n\n";
+      log << "\n\nJSBSim startup complete\n\n";
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGFDMExec" << endl;
-    if (from == 1) cout << "Destroyed:    FGFDMExec" << endl;
+    if (from == 0) log << "Instantiated: FGFDMExec" << endl;
+    if (from == 1) log << "Destroyed:    FGFDMExec" << endl;
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
     if (from == 2) {
-      cout << "================== Frame: " << Frame << "  Time: "
-           << sim_time << " dt: " << dT << endl;
+      log << "================== Frame: " << Frame << "  Time: " << fixed
+          << sim_time << " dt: " << dT << endl;
     }
   }
   if (debug_lvl & 8 ) { // Runtime state variables
@@ -1236,11 +1440,7 @@ void FGFDMExec::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }
 }
-
-

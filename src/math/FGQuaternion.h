@@ -44,12 +44,6 @@ SENTRY
 #include "FGJSBBase.h"
 #include "FGColumnVector3.h"
 
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-  DEFINITIONS
-  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_QUATERNION "$Id: FGQuaternion.h,v 1.26 2013/11/24 16:53:15 bcoconni Exp $"
-
 namespace JSBSim {
 
 class FGMatrix33;
@@ -89,7 +83,7 @@ class FGMatrix33;
   CLASS DECLARATION
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-class FGQuaternion : public FGJSBBase {
+class JSBSIM_API FGQuaternion : public FGJSBBase {
 public:
   /** Default initializer.
       Default initializer, initializes the class with the identity rotation.  */
@@ -568,7 +562,7 @@ inline FGQuaternion QExp(const FGColumnVector3& omega) {
     @param os Stream to write to.
     @param q Quaternion to write.
     Write the quaternion to a stream.*/
-std::ostream& operator<<(std::ostream& os, const FGQuaternion& q);
+JSBSIM_API std::ostream& operator<<(std::ostream& os, const FGQuaternion& q);
 
 } // namespace JSBSim
 #endif

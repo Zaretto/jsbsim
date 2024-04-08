@@ -95,7 +95,7 @@
 
    <pointmass name="left-tip-tank"><!--empty-->
       <weight unit="LBS">125</weight>
-      <location name="POINTMASS" unit="IN">
+      <location unit="IN">
           <x>389</x>
           <y>-148</y>
           <z>-52</z>
@@ -104,7 +104,7 @@
 
    <pointmass name="right-tip-tank"><!--empty-->
       <weight unit="LBS">125</weight>
-      <location name="POINTMASS" unit="IN">
+      <location unit="IN">
           <x>389</x>
           <y>148</y>
           <z>-52</z>
@@ -216,16 +216,6 @@
  <propulsion>
 
    <engine file="J79-GE-11A">
-    <location unit="IN">
-      <x>342.06</x>
-      <y>0.00</y>
-      <z>-23.29</z>
-    </location>
-    <orient unit="DEG">
-      <pitch>0.0</pitch>
-      <roll>0.0</roll>
-      <yaw>0.0</yaw>
-    </orient>
     <feed>0</feed>
     <feed>1</feed>
     <feed>2</feed>
@@ -303,26 +293,24 @@
 
  <function name="aero/function/kCLge">
    <description>Change_in_lift_due_to_ground_effect</description>
-   <product>
-      <table>
-         <independentVar>aero/h_b-mac-ft</independentVar>
-         <tableData>
-           0.0000    1.2290
-           0.1000    1.1240
-           0.1500    1.1160
-           0.2000    1.1240
-           0.3000    1.1050
-           0.4000    1.0410
-           0.5000    1.0340
-           0.6000    1.0190
-           0.7000    1.0080
-           0.8000    1.0030
-           0.9000    1.0010
-           1.0000    1.0000
-           1.1000    1.0000
-         </tableData>
-      </table>
-   </product>
+   <table>
+     <independentVar>aero/h_b-mac-ft</independentVar>
+     <tableData>
+       0.0000    1.2290
+       0.1000    1.1240
+       0.1500    1.1160
+       0.2000    1.1240
+       0.3000    1.1050
+       0.4000    1.0410
+       0.5000    1.0340
+       0.6000    1.0190
+       0.7000    1.0080
+       0.8000    1.0030
+       0.9000    1.0010
+       1.0000    1.0000
+       1.1000    1.0000
+     </tableData>
+   </table>
  </function>
 
   <axis name="LIFT">

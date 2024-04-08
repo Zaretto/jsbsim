@@ -6,7 +6,7 @@
 
     <fileheader>
       <author> Unknown </author>
-      <filecreationdate> 2004-01-01 </filecreationdate>
+      <filecreationdate>2004-01-01</filecreationdate>
       <version> $Id: C130.xml,v 1.12 2012/12/22 15:22:18 jberndt Exp $ </version>
       <description> Models a Lockheed C-130 Hercules. </description>
       <note>
@@ -112,16 +112,6 @@
     </ground_reactions>
     <propulsion>
         <engine file="t56">
-            <location unit="IN">
-                <x> 586.5 </x>
-                <y> -265 </y>
-                <z> -40 </z>
-            </location>
-            <orient unit="DEG">
-                <roll> 0.0 </roll>
-                <pitch> 0 </pitch>
-                <yaw> 0 </yaw>
-            </orient>
             <feed>0</feed>
             <thruster file="t56_prop">
                 <location unit="IN">
@@ -137,16 +127,6 @@
             </thruster>
         </engine>
         <engine file="t56">
-            <location unit="IN">
-                <x> 586.5 </x>
-                <y> -265 </y>
-                <z> -40 </z>
-            </location>
-            <orient unit="DEG">
-                <roll> 0.0 </roll>
-                <pitch> 0 </pitch>
-                <yaw> 0 </yaw>
-            </orient>
             <feed>1</feed>
             <thruster file="t56_prop">
                 <location unit="IN">
@@ -162,16 +142,6 @@
             </thruster>
         </engine>
         <engine file="t56">
-            <location unit="IN">
-                <x> 586.5 </x>
-                <y> 265 </y>
-                <z> -40 </z>
-            </location>
-            <orient unit="DEG">
-                <roll> 0.0 </roll>
-                <pitch> 0 </pitch>
-                <yaw> 0 </yaw>
-            </orient>
             <feed>2</feed>
             <thruster file="t56_prop">
                 <location unit="IN">
@@ -187,16 +157,6 @@
             </thruster>
         </engine>
         <engine file="t56">
-            <location unit="IN">
-                <x> 586.5 </x>
-                <y> 265 </y>
-                <z> -40 </z>
-            </location>
-            <orient unit="DEG">
-                <roll> 0.0 </roll>
-                <pitch> 0 </pitch>
-                <yaw> 0 </yaw>
-            </orient>
             <feed>3</feed>
             <thruster file="t56_prop">
                 <location unit="IN">
@@ -479,7 +439,7 @@
                 <product>
                     <property>aero/qbar-psf</property>
                     <property>metrics/Sw-sqft</property>
-                    <property>fcs/elevator-pos-norm</property>
+                    <property>fcs/mag-elevator-pos-rad</property>
                     <value>0.0350</value>
                 </product>
             </function>

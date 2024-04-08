@@ -7,21 +7,21 @@
  --------- Copyright (C) 1999  Anthony K. Peden (apeden@earthlink.net) ---------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
  HISTORY
 --------------------------------------------------------------------------------
@@ -43,11 +43,11 @@ INCLUDES
 
 #include <iomanip>
 #include "FGTrim.h"
-#include "models/FGGroundReactions.h"
 #include "models/FGInertial.h"
 #include "models/FGAccelerations.h"
 #include "models/FGMassBalance.h"
 #include "models/FGFCS.h"
+#include "input_output/FGLog.h"
 
 #if _MSC_VER
 #pragma warning (disable : 4786 4788)
@@ -56,9 +56,6 @@ INCLUDES
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGTrim.cpp,v 1.34 2016/06/12 09:09:02 bcoconni Exp $");
-IDENT(IdHdr,ID_TRIM);
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -79,46 +76,53 @@ FGTrim::FGTrim(FGFDMExec *FDMExec,TrimMode tt)
   gamma_fallback=false;
   mode=tt;
   xlo=xhi=alo=ahi=0.0;
-  targetNlf=1.0;
+  targetNlf=fgic.GetTargetNlfIC();
   debug_axis=tAll;
   SetMode(tt);
-  if (debug_lvl & 2) cout << "Instantiated: FGTrim" << endl;
+  if (debug_lvl & 2) {
+    FGLogging log(fdmex->GetLogger(), LogLevel::DEBUG);
+    log << "Instantiated: FGTrim\n";
+  }
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 FGTrim::~FGTrim(void) {
-  if (debug_lvl & 2) cout << "Destroyed:    FGTrim" << endl;
+  if (debug_lvl & 2) {
+    FGLogging log(fdmex->GetLogger(), LogLevel::DEBUG);
+    log << "Destroyed:    FGTrim\n";
+  }
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 void FGTrim::TrimStats() {
   int run_sum=0;
-  cout << endl << "  Trim Statistics: " << endl;
-  cout << "    Total Iterations: " << total_its << endl;
+  FGLogging log(fdmex->GetLogger(), LogLevel::INFO);
+  log << "\n  Trim Statistics:\n";
+  log << "    Total Iterations: " << total_its << "\n";
   if( total_its > 0) {
-    cout << "    Sub-iterations:" << endl;
+    log << "    Sub-iterations:\n";
     for (unsigned int current_axis=0; current_axis<TrimAxes.size(); current_axis++) {
       run_sum += TrimAxes[current_axis].GetRunCount();
-      cout << "   " << setw(5) << TrimAxes[current_axis].GetStateName().c_str()
+      log << "   " << setw(5) << TrimAxes[current_axis].GetStateName().c_str()
            << ": " << setprecision(3) << sub_iterations[current_axis]
            << " average: " << setprecision(5) << sub_iterations[current_axis]/double(total_its)
            << "  successful:  " << setprecision(3) << successful[current_axis]
            << "  stability: " << setprecision(5) << TrimAxes[current_axis].GetAvgStability()
-           << endl;
+           << "\n";
     }
-    cout << "    Run Count: " << run_sum << endl;
+    log << "    Run Count: " << run_sum << "\n";
   }
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 void FGTrim::Report(void) {
-  cout << "  Trim Results: " << endl;
+  FGLogging log(fdmex->GetLogger(), LogLevel::INFO);
+  log << "  Trim Results:\n";
   for(unsigned int current_axis=0; current_axis<TrimAxes.size(); current_axis++)
     TrimAxes[current_axis].AxisReport();
-
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -126,7 +130,8 @@ void FGTrim::Report(void) {
 void FGTrim::ClearStates(void) {
     mode=tCustom;
     TrimAxes.clear();
-    //cout << "TrimAxes.size(): " << TrimAxes.size() << endl;
+    //FGLogging log(fdmex->GetLogger(), LogLevel::INFO);
+    //log << "TrimAxes.size(): " << TrimAxes.size() << "\n";
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -191,15 +196,16 @@ bool FGTrim::DoTrim(void) {
   bool trim_failed=false;
   unsigned int N = 0;
   unsigned int axis_count = 0;
-  FGFCS *FCS = fdmex->GetFCS();
+  auto FCS = fdmex->GetFCS();
+  auto GroundReactions = fdmex->GetGroundReactions();
   vector<double> throttle0 = FCS->GetThrottleCmd();
   double elevator0 = FCS->GetDeCmd();
   double aileron0 = FCS->GetDaCmd();
   double rudder0 = FCS->GetDrCmd();
   double PitchTrim0 = FCS->GetPitchTrimCmd();
 
-  for(int i=0;i < fdmex->GetGroundReactions()->GetNumGearUnits();i++)
-    fdmex->GetGroundReactions()->GetGearUnit(i)->SetReport(false);
+  for(int i=0;i < GroundReactions->GetNumGearUnits();i++)
+    GroundReactions->GetGearUnit(i)->SetReport(false);
 
   fdmex->SetTrimStatus(true);
   fdmex->SuspendIntegration();
@@ -223,8 +229,9 @@ bool FGTrim::DoTrim(void) {
 
   //clear the sub iterations counts & zero out the controls
   for(unsigned int current_axis=0;current_axis<TrimAxes.size();current_axis++) {
-    //cout << current_axis << "  " << TrimAxes[current_axis]->GetStateName()
-    //<< "  " << TrimAxes[current_axis]->GetControlName()<< endl;
+    //FGLogging log(fdmex->GetLogger(), LogLevel::INFO);
+    //log << current_axis << "  " << TrimAxes[current_axis]->GetStateName()
+    //<< "  " << TrimAxes[current_axis]->GetControlName()<< "\n";
     xlo=TrimAxes[current_axis].GetControlMin();
     xhi=TrimAxes[current_axis].GetControlMax();
     TrimAxes[current_axis].SetControl((xlo+xhi)/2);
@@ -236,11 +243,12 @@ bool FGTrim::DoTrim(void) {
   }
 
   if(mode == tPullup ) {
-    cout << "Setting pitch rate and nlf... " << endl;
+    FGLogging log(fdmex->GetLogger(), LogLevel::INFO);
+    log << "Setting pitch rate and nlf...\n";
     setupPullup();
-    cout << "pitch rate done ... " << endl;
+    log << "pitch rate done ...\n";
     TrimAxes[0].SetStateTarget(targetNlf);
-    cout << "nlf done" << endl;
+    log << "nlf done\n";
   } else if (mode == tTurn) {
     setupTurn();
     //TrimAxes[0].SetStateTarget(targetNlf);
@@ -274,7 +282,8 @@ bool FGTrim::DoTrim(void) {
     }
 
     if((axis_count == TrimAxes.size()-1) && (TrimAxes.size() > 1)) {
-      //cout << TrimAxes.size()-1 << " out of " << TrimAxes.size() << "!" << endl;
+      //FGLogging log(fdmex->GetLogger(), LogLevel::INFO);
+      //log << TrimAxes.size()-1 << " out of " << TrimAxes.size() << "!" << "\n";
       //At this point we can check the input limits of the failed axis
       //and declare the trim failed if there is no sign change. If there
       //is, keep going until success or max iteration count
@@ -289,8 +298,9 @@ bool FGTrim::DoTrim(void) {
             if( (gamma_fallback) &&
                 (TrimAxes[current_axis].GetStateType() == tUdot) &&
                 (TrimAxes[current_axis].GetControlType() == tThrottle)) {
-              cout << "  Can't trim udot with throttle, trying flight"
-              << " path angle. (" << N << ")" << endl;
+              FGLogging log(fdmex->GetLogger(), LogLevel::WARN);
+              log << "  Can't trim udot with throttle, trying flight"
+              << " path angle. (" << N << ")\n";
               if(TrimAxes[current_axis].GetState() > 0)
                 TrimAxes[current_axis].SetControlToMin();
               else
@@ -298,8 +308,9 @@ bool FGTrim::DoTrim(void) {
               TrimAxes[current_axis].Run();
               TrimAxes[current_axis]=FGTrimAxis(fdmex,&fgic,tUdot,tGamma);
             } else {
-              cout << "  Sorry, " << TrimAxes[current_axis].GetStateName()
-              << " doesn't appear to be trimmable" << endl;
+              FGLogging log(fdmex->GetLogger(), LogLevel::ERROR);
+              log << "  Sorry, " << TrimAxes[current_axis].GetStateName()
+              << " doesn't appear to be trimmable\n";
               //total_its=k;
               trim_failed=true; //force the trim to fail
             } //gamma_fallback
@@ -314,8 +325,10 @@ bool FGTrim::DoTrim(void) {
 
   if((!trim_failed) && (axis_count >= TrimAxes.size())) {
     total_its=N;
-    if (debug_lvl > 0)
-        cout << endl << "  Trim successful" << endl;
+    if (debug_lvl > 0) {
+      FGLogging log(fdmex->GetLogger(), LogLevel::DEBUG);
+      log << "\n  Trim successful\n";
+    }
   } else { // The trim has failed
     total_its=N;
 
@@ -332,19 +345,21 @@ bool FGTrim::DoTrim(void) {
     fdmex->Run();
 
     // If WOW is true we must make sure there are no gears into the ground.
-    if (fdmex->GetGroundReactions()->GetWOW())
+    if (GroundReactions->GetWOW())
       trimOnGround();
 
-    if (debug_lvl > 0)
-        cout << endl << "  Trim failed" << endl;
+    if (debug_lvl > 0) {
+      FGLogging log(fdmex->GetLogger(), LogLevel::DEBUG);
+      log << "\n  Trim failed\n";
+    }
   }
 
   fdmex->GetPropagate()->InitializeDerivatives();
   fdmex->ResumeIntegration();
   fdmex->SetTrimStatus(false);
 
-  for(int i=0;i < fdmex->GetGroundReactions()->GetNumGearUnits();i++)
-    fdmex->GetGroundReactions()->GetGearUnit(i)->SetReport(true);
+  for(int i=0;i < GroundReactions->GetNumGearUnits();i++)
+    GroundReactions->GetGearUnit(i)->SetReport(true);
 
   return !trim_failed;
 }
@@ -375,10 +390,10 @@ bool FGTrim::DoTrim(void) {
 
 void FGTrim::trimOnGround(void)
 {
-  FGGroundReactions* GroundReactions = fdmex->GetGroundReactions();
-  FGPropagate* Propagate = fdmex->GetPropagate();
-  FGMassBalance* MassBalance = fdmex->GetMassBalance();
-  FGAccelerations* Accelerations = fdmex->GetAccelerations();
+  auto GroundReactions = fdmex->GetGroundReactions();
+  auto Propagate = fdmex->GetPropagate();
+  auto MassBalance = fdmex->GetMassBalance();
+  auto Accelerations = fdmex->GetAccelerations();
   vector<ContactPoints> contacts;
   FGLocation CGLocation = Propagate->GetLocation();
   FGMatrix33 Tec2b = Propagate->GetTec2b();
@@ -390,7 +405,7 @@ void FGTrim::trimOnGround(void)
   // loop to find which one is closer to (or deeper into) the ground.
   for (int i = 0; i < GroundReactions->GetNumGearUnits(); ++i) {
     ContactPoints c;
-    FGLGear* gear = GroundReactions->GetGearUnit(i);
+    auto gear = GroundReactions->GetGearUnit(i);
 
     // Skip the retracted landing gears
     if (!gear->GetGearUnitDown())
@@ -401,9 +416,14 @@ void FGTrim::trimOnGround(void)
 
     FGColumnVector3 normal, vDummy;
     FGLocation lDummy;
-    double height = gearLoc.GetContactPoint(lDummy, normal, vDummy, vDummy);
-    c.normal = Tec2b * normal;
+    double height = fdmex->GetInertial()->GetContactPoint(gearLoc, lDummy,
+                                                          normal, vDummy,
+                                                          vDummy);
 
+    if (gear->IsBogey() && !GroundReactions->GetSolid())
+      continue;
+
+    c.normal = Tec2b * normal;
     contacts.push_back(c);
 
     if (height < hmin) {
@@ -411,6 +431,9 @@ void FGTrim::trimOnGround(void)
       contactRef = contacts.size() - 1;
     }
   }
+
+  if (contacts.size() < 3)
+    return;
 
   // Remove the contact point that is closest to the ground from the list:
   // the rotation axis will be going thru this point so we need to remove it
@@ -510,7 +533,8 @@ FGTrim::RotationParameters FGTrim::calcRotation(vector<ContactPoints>& contacts,
     // the ground is (0, DistPlane, alpha) in the basis (u, v, t)
     double mag = sqrRadius - DistPlane * DistPlane;
     if (mag < 0) {
-      cout << "FGTrim::calcRotation DistPlane^2 larger than sqrRadius" << endl;
+      FGLogging log(fdmex->GetLogger(), LogLevel::WARN);
+      log << "FGTrim::calcRotation DistPlane^2 larger than sqrRadius\n";
     }
     double alpha = sqrt(max(mag, 0.0));
     FGColumnVector3 CP = alpha * t + DistPlane * v;
@@ -562,24 +586,28 @@ bool FGTrim::solve(FGTrimAxis& axis) {
       axis.Run();
       f2=axis.GetState();
       if(Debug > 1) {
-        cout << "FGTrim::solve Nsub,x1,x2,x3: " << Nsub << ", " << x1
-        << ", " << x2 << ", " << x3 << endl;
-        cout << "                             " << f1 << ", " << f2 << ", " << f3 << endl;
+        FGLogging log(fdmex->GetLogger(), LogLevel::DEBUG);
+        log << "FGTrim::solve Nsub,x1,x2,x3: " << Nsub << ", " << x1
+        << ", " << x2 << ", " << x3 << "\n";
+        log << "                             " << f1 << ", " << f2 << ", " << f3 << "\n";
       }
       if(f1*f2 <= 0.0) {
         x3=x2;
         f3=f2;
         f1=relax*f1;
-        //cout << "Solution is between x1 and x2" << endl;
+        //FGLogging log(fdmex->GetLogger(), LogLevel::INFO);
+        //log << "Solution is between x1 and x2" << "\n";
       }
       else if(f2*f3 <= 0.0) {
         x1=x2;
         f1=f2;
         f3=relax*f3;
-        //cout << "Solution is between x2 and x3" << endl;
+        //FGLogging log(fdmex->GetLogger(), LogLevel::INFO);
+        //log << "Solution is between x2 and x3" << "\n";
 
       }
-      //cout << i << endl;
+      //FGLogging log(fdmex->GetLogger(), LogLevel::INFO);
+      //log << i << "\n";
 
 
     }//end while
@@ -661,9 +689,11 @@ bool FGTrim::findInterval(FGTrimAxis& axis) {
     lastxlo=xlo;lastxhi=xhi;
     lastalo=alo;lastahi=ahi;
     if( !found && xlo==xmin && xhi==xmax ) continue;
-    if(Debug > 1)
-      cout << "FGTrim::findInterval: Nsub=" << Nsub << " Lo= " << xlo
-                           << " Hi= " << xhi << " alo*ahi: " << alo*ahi << endl;
+    if(Debug > 1) {
+      FGLogging log(fdmex->GetLogger(), LogLevel::DEBUG);
+      log << "FGTrim::findInterval: Nsub=" << Nsub << " Lo= " << xlo
+          << " Hi= " << xhi << " alo*ahi: " << alo*ahi << "\n";
+    }
   } while(!found && (Nsub <= max_sub_iterations) );
   return found;
 }
@@ -697,9 +727,11 @@ bool FGTrim::checkLimits(FGTrimAxis& axis)
   axis.SetControl(xhi);
   axis.Run();
   ahi=axis.GetState();
-  if(Debug > 1)
-    cout << "checkLimits() xlo,xhi,alo,ahi: " << xlo << ", " << xhi << ", "
-                                              << alo << ", " << ahi << endl;
+  if(Debug > 1) {
+    FGLogging log(fdmex->GetLogger(), LogLevel::DEBUG);
+    log << "checkLimits() xlo,xhi,alo,ahi: " << xlo << ", " << xhi << ", "
+        << alo << ", " << ahi << "\n";
+  }
   solutionDomain=0;
   solutionExists=false;
   if(fabs(ahi-alo) > axis.GetTolerance()) {
@@ -724,14 +756,15 @@ bool FGTrim::checkLimits(FGTrimAxis& axis)
 
 void FGTrim::setupPullup() {
   double g,q,cgamma;
-  g=fdmex->GetInertial()->gravity();
+  g=fdmex->GetInertial()->GetGravity().Magnitude();
   cgamma=cos(fgic.GetFlightPathAngleRadIC());
-  cout << "setPitchRateInPullup():  " << g << ", " << cgamma << ", "
-       << fgic.GetVtrueFpsIC() << endl;
+  FGLogging log(fdmex->GetLogger(), LogLevel::INFO);
+  log << "setPitchRateInPullup():  " << g << ", " << cgamma << ", "
+       << fgic.GetVtrueFpsIC() << "\n";
   q=g*(targetNlf-cgamma)/fgic.GetVtrueFpsIC();
-  cout << targetNlf << ", " << q << endl;
+  log << targetNlf << ", " << q << "\n";
   fgic.SetQRadpsIC(q);
-  cout << "setPitchRateInPullup() complete" << endl;
+  log << "setPitchRateInPullup() complete\n";
 
 }
 
@@ -742,9 +775,10 @@ void FGTrim::setupTurn(void){
   phi = fgic.GetPhiRadIC();
   if( fabs(phi) > 0.001 && fabs(phi) < 1.56 ) {
     targetNlf = 1 / cos(phi);
-    g = fdmex->GetInertial()->gravity();
+    g = fdmex->GetInertial()->GetGravity().Magnitude();
     psidot = g*tan(phi) / fgic.GetUBodyFpsIC();
-    cout << targetNlf << ", " << psidot << endl;
+    FGLogging log(fdmex->GetLogger(), LogLevel::INFO);
+    log << targetNlf << ", " << psidot << "\n";
   }
 
 }
@@ -754,7 +788,7 @@ void FGTrim::setupTurn(void){
 void FGTrim::updateRates(void){
   if( mode == tTurn ) {
     double phi = fgic.GetPhiRadIC();
-    double g = fdmex->GetInertial()->gravity();
+    double g = fdmex->GetInertial()->GetGravity().Magnitude();
     double p,q,r,theta;
     if(fabs(phi) > 0.001 && fabs(phi) < 1.56 ) {
       theta=fgic.GetThetaRadIC();
@@ -771,7 +805,7 @@ void FGTrim::updateRates(void){
     fgic.SetRRadpsIC(r);
   } else if( mode == tPullup && fabs(targetNlf-1) > 0.01) {
       double g,q,cgamma;
-      g=fdmex->GetInertial()->gravity();
+      g=fdmex->GetInertial()->GetGravity().Magnitude();
       cgamma=cos(fgic.GetFlightPathAngleRadIC());
       q=g*(targetNlf-cgamma)/fgic.GetVtrueFpsIC();
       fgic.SetQRadpsIC(q);
@@ -798,8 +832,10 @@ void FGTrim::SetMode(TrimMode tt) {
     mode=tt;
     switch(tt) {
       case tFull:
-        if (debug_lvl > 0)
-          cout << "  Full Trim" << endl;
+        if (debug_lvl > 0) {
+          FGLogging log(fdmex->GetLogger(), LogLevel::DEBUG);
+          log << "  Full Trim\n";
+        }
         TrimAxes.push_back(FGTrimAxis(fdmex,&fgic,tWdot,tAlpha));
         TrimAxes.push_back(FGTrimAxis(fdmex,&fgic,tUdot,tThrottle ));
         TrimAxes.push_back(FGTrimAxis(fdmex,&fgic,tQdot,tPitchTrim ));
@@ -809,15 +845,19 @@ void FGTrim::SetMode(TrimMode tt) {
         TrimAxes.push_back(FGTrimAxis(fdmex,&fgic,tRdot,tRudder ));
         break;
       case tLongitudinal:
-        if (debug_lvl > 0)
-          cout << "  Longitudinal Trim" << endl;
+        if (debug_lvl > 0) {
+          FGLogging log(fdmex->GetLogger(), LogLevel::DEBUG);
+          log << "  Longitudinal Trim\n";
+        }
         TrimAxes.push_back(FGTrimAxis(fdmex,&fgic,tWdot,tAlpha ));
         TrimAxes.push_back(FGTrimAxis(fdmex,&fgic,tUdot,tThrottle ));
         TrimAxes.push_back(FGTrimAxis(fdmex,&fgic,tQdot,tPitchTrim ));
         break;
       case tGround:
-        if (debug_lvl > 0)
-          cout << "  Ground Trim" << endl;
+        if (debug_lvl > 0) {
+          FGLogging log(fdmex->GetLogger(), LogLevel::DEBUG);
+          log << "  Ground Trim\n";
+        }
         TrimAxes.push_back(FGTrimAxis(fdmex,&fgic,tWdot,tAltAGL ));
         TrimAxes.push_back(FGTrimAxis(fdmex,&fgic,tQdot,tTheta ));
         TrimAxes.push_back(FGTrimAxis(fdmex,&fgic,tPdot,tPhi ));
@@ -843,7 +883,8 @@ void FGTrim::SetMode(TrimMode tt) {
       case tNone:
         break;
     }
-    //cout << "TrimAxes.size(): " << TrimAxes.size() << endl;
+    //FGLogging log(fdmex->GetLogger(), LogLevel::INFO);
+    //log << "TrimAxes.size(): " << TrimAxes.size() << "\n";
     sub_iterations.resize(TrimAxes.size());
     successful.resize(TrimAxes.size());
     solution.resize(TrimAxes.size());

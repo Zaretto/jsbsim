@@ -9,21 +9,21 @@
  ------------- Copyright (C) 1999  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -38,30 +38,14 @@ COMMENTS, REFERENCES,  and NOTES
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <iostream>
-#include <cmath>
-
 #include "FGAircraft.h"
 #include "FGFDMExec.h"
-#include "input_output/FGPropertyManager.h"
 #include "input_output/FGXMLElement.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-GLOBAL DATA
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-IDENT(IdSrc,"$Id: FGAircraft.cpp,v 1.43 2015/01/31 14:56:21 bcoconni Exp $");
-IDENT(IdHdr,ID_AIRCRAFT);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -78,7 +62,6 @@ FGAircraft::FGAircraft(FGFDMExec* fdmex) : FGModel(fdmex)
   lbarh = lbarv = 0.0;
   vbarh = vbarv = 0.0;
   WingIncidence = 0.0;
-  PitotAngle = 0.0;
 
   bind();
 
@@ -137,7 +120,7 @@ bool FGAircraft::Load(Element* el)
   string element_name;
   Element* element;
 
-  if (!FGModel::Load(el)) return false;
+  if (!FGModel::Upload(el, true)) return false;
 
   if (el->FindElement("wingarea"))
     WingArea = el->FindElementValueAsNumberConvertTo("wingarea", "FT2");
@@ -155,8 +138,6 @@ bool FGAircraft::Load(Element* el)
     VTailArea = el->FindElementValueAsNumberConvertTo("vtailarea", "FT2");
   if (el->FindElement("vtailarm"))
     VTailArm = el->FindElementValueAsNumberConvertTo("vtailarm", "FT");
-  if (el->FindElement("pitot_angle"))
-    PitotAngle = el->FindElementValueAsNumberConvertTo("pitot_angle", "RAD");
 
   // Find all LOCATION elements that descend from this METRICS branch of the
   // config file. This would be CG location, eyepoint, etc.
@@ -182,7 +163,7 @@ bool FGAircraft::Load(Element* el)
     }
   }
 
-  PostLoad(el, PropertyManager);
+  PostLoad(el, FDMExec);
 
   Debug(2);
 
@@ -193,7 +174,6 @@ bool FGAircraft::Load(Element* el)
 
 void FGAircraft::bind(void)
 {
-  typedef double (FGAircraft::*PMF)(int) const;
   PropertyManager->Tie("metrics/Sw-sqft", this, &FGAircraft::GetWingArea, &FGAircraft::SetWingArea);
   PropertyManager->Tie("metrics/bw-ft", this, &FGAircraft::GetWingSpan);
   PropertyManager->Tie("metrics/cbarw-ft", this, &FGAircraft::Getcbar);
@@ -207,15 +187,15 @@ void FGAircraft::bind(void)
   PropertyManager->Tie("metrics/lv-norm", this, &FGAircraft::Getlbarv);
   PropertyManager->Tie("metrics/vbarh-norm", this, &FGAircraft::Getvbarh);
   PropertyManager->Tie("metrics/vbarv-norm", this, &FGAircraft::Getvbarv);
-  PropertyManager->Tie("metrics/aero-rp-x-in", this, eX, (PMF)&FGAircraft::GetXYZrp, &FGAircraft::SetXYZrp);
-  PropertyManager->Tie("metrics/aero-rp-y-in", this, eY, (PMF)&FGAircraft::GetXYZrp, &FGAircraft::SetXYZrp);
-  PropertyManager->Tie("metrics/aero-rp-z-in", this, eZ, (PMF)&FGAircraft::GetXYZrp, &FGAircraft::SetXYZrp);
-  PropertyManager->Tie("metrics/eyepoint-x-in", this, eX, (PMF)&FGAircraft::GetXYZep);
-  PropertyManager->Tie("metrics/eyepoint-y-in", this, eY,(PMF)&FGAircraft::GetXYZep);
-  PropertyManager->Tie("metrics/eyepoint-z-in", this, eZ, (PMF)&FGAircraft::GetXYZep);
-  PropertyManager->Tie("metrics/visualrefpoint-x-in", this, eX, (PMF)&FGAircraft::GetXYZvrp);
-  PropertyManager->Tie("metrics/visualrefpoint-y-in", this, eY, (PMF)&FGAircraft::GetXYZvrp);
-  PropertyManager->Tie("metrics/visualrefpoint-z-in", this, eZ, (PMF)&FGAircraft::GetXYZvrp);
+  PropertyManager->Tie("metrics/aero-rp-x-in", this, eX, &FGAircraft::GetXYZrp, &FGAircraft::SetXYZrp);
+  PropertyManager->Tie("metrics/aero-rp-y-in", this, eY, &FGAircraft::GetXYZrp, &FGAircraft::SetXYZrp);
+  PropertyManager->Tie("metrics/aero-rp-z-in", this, eZ, &FGAircraft::GetXYZrp, &FGAircraft::SetXYZrp);
+  PropertyManager->Tie("metrics/eyepoint-x-in", this, eX, &FGAircraft::GetXYZep);
+  PropertyManager->Tie("metrics/eyepoint-y-in", this, eY,&FGAircraft::GetXYZep);
+  PropertyManager->Tie("metrics/eyepoint-z-in", this, eZ, &FGAircraft::GetXYZep);
+  PropertyManager->Tie("metrics/visualrefpoint-x-in", this, eX, &FGAircraft::GetXYZvrp);
+  PropertyManager->Tie("metrics/visualrefpoint-y-in", this, eY, &FGAircraft::GetXYZvrp);
+  PropertyManager->Tie("metrics/visualrefpoint-z-in", this, eZ, &FGAircraft::GetXYZvrp);
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -243,23 +223,25 @@ void FGAircraft::Debug(int from)
 
   if (debug_lvl & 1) { // Standard console startup message output
     if (from == 2) { // Loading
-      cout << endl << "  Aircraft Metrics:" << endl;
-      cout << "    WingArea: " << WingArea  << endl;
-      cout << "    WingSpan: " << WingSpan  << endl;
-      cout << "    Incidence: " << WingIncidence << endl;
-      cout << "    Chord: " << cbar << endl;
-      cout << "    H. Tail Area: " << HTailArea << endl;
-      cout << "    H. Tail Arm: " << HTailArm << endl;
-      cout << "    V. Tail Area: " << VTailArea << endl;
-      cout << "    V. Tail Arm: " << VTailArm << endl;
-      cout << "    Eyepoint (x, y, z): " << vXYZep << endl;
-      cout << "    Ref Pt (x, y, z): " << vXYZrp << endl;
-      cout << "    Visual Ref Pt (x, y, z): " << vXYZvrp << endl;
+      FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+      log << "\n  Aircraft Metrics:\n"  << fixed;
+      log << "    WingArea: " << WingArea  << "\n";
+      log << "    WingSpan: " << WingSpan  << "\n";
+      log << "    Incidence: " << WingIncidence << "\n";
+      log << "    Chord: " << cbar << "\n";
+      log << "    H. Tail Area: " << HTailArea << "\n";
+      log << "    H. Tail Arm: " << HTailArm << "\n";
+      log << "    V. Tail Area: " << VTailArea << "\n";
+      log << "    V. Tail Arm: " << VTailArm << "\n";
+      log << "    Eyepoint (x, y, z): " << vXYZep << "\n";
+      log << "    Ref Pt (x, y, z): " << vXYZrp << "\n";
+      log << "    Visual Ref Pt (x, y, z): " << vXYZvrp << "\n";
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGAircraft" << endl;
-    if (from == 1) cout << "Destroyed:    FGAircraft" << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGAircraft\n";
+    if (from == 1) log << "Destroyed:    FGAircraft\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -269,8 +251,6 @@ void FGAircraft::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

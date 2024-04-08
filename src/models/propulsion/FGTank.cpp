@@ -8,21 +8,21 @@
  ------------- Copyright (C) 1999  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -36,32 +36,25 @@ HISTORY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <cstdlib>
-#include <iostream>
 #include "FGTank.h"
 #include "FGFDMExec.h"
 #include "input_output/FGXMLElement.h"
-#include "input_output/FGPropertyManager.h"
-#include "input_output/string_utilities.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGTank.cpp,v 1.46 2017/02/21 21:07:04 bcoconni Exp $");
-IDENT(IdHdr,ID_TANK);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 FGTank::FGTank(FGFDMExec* exec, Element* el, int tank_number)
-                  : TankNumber(tank_number)
+  : TankNumber(tank_number)
 {
   string token, strFuelName;
   Element* element;
   Element* element_Grain;
-  FGPropertyManager *PropertyManager = exec->GetPropertyManager();
+  auto PropertyManager = exec->GetPropertyManager();
   Area = 1.0;
   Density = 6.6;
   InitialTemperature = Temperature = -9999.0;
@@ -70,17 +63,19 @@ FGTank::FGTank(FGFDMExec* exec, Element* el, int tank_number)
   Radius = Contents = Standpipe = Length = InnerRadius = 0.0;
   ExternalFlow = 0.0;
   InitialStandpipe = 0.0;
-  Capacity = 0.00001;
+  Capacity = 0.00001; UnusableVol = 0.0;
   Priority = InitialPriority = 1;
   vXYZ.InitMatrix();
   vXYZ_drain.InitMatrix();
   ixx_unit = iyy_unit = izz_unit = 1.0;
   grainType = gtUNKNOWN; // This is the default
 
-  type = el->GetAttributeValue("type");
+  string type = el->GetAttributeValue("type");
   if      (type == "FUEL")     Type = ttFUEL;
   else if (type == "OXIDIZER") Type = ttOXIDIZER;
   else                         Type = ttUNKNOWN;
+
+  Name = el->GetAttributeValue("name");
 
   element = el->FindElement("location");
   if (element)  vXYZ = element->FindElementTripletConvertTo("IN");
@@ -102,6 +97,8 @@ FGTank::FGTank(FGFDMExec* exec, Element* el, int tank_number)
     Capacity = el->FindElementValueAsNumberConvertTo("capacity", "LBS");
   if (el->FindElement("contents"))
     InitialContents = Contents = el->FindElementValueAsNumberConvertTo("contents", "LBS");
+  if (el->FindElement("unusable-volume"))
+    UnusableVol = el->FindElementValueAsNumberConvertTo("unusable-volume", "GAL");
   if (el->FindElement("temperature"))
     InitialTemperature = Temperature = el->FindElementValueAsNumber("temperature");
   if (el->FindElement("standpipe"))
@@ -122,12 +119,24 @@ FGTank::FGTank(FGFDMExec* exec, Element* el, int tank_number)
     Capacity = 0.00001;
     Contents = 0.0;
   }
+  if (Capacity <= GetUnusable()) {
+    cerr << el->ReadFrom() << "Tank capacity (" << Capacity
+         << " lbs) is lower than the amount of unusable fuel (" << GetUnusable()
+         << " lbs) for tank " << tank_number
+         << "! Did you accidentally swap unusable and capacity?" << endl;
+    throw("tank definition error");
+  }
   if (Contents > Capacity) {
     cerr << el->ReadFrom() << "Tank content (" << Contents
          << " lbs) is greater than tank capacity (" << Capacity
          << " lbs) for tank " << tank_number
          << "! Did you accidentally swap contents and capacity?" << endl;
     throw("tank definition error");
+  }
+  if (Contents < GetUnusable()) {
+    cerr << el->ReadFrom() << "Tank content (" << Contents
+         << " lbs) is lower than the amount of unusable fuel (" << GetUnusable()
+         << " lbs) for tank " << tank_number << endl;
   }
 
   PctFull = 100.0*Contents/Capacity;            // percent full; 0 to 100.0
@@ -137,7 +146,7 @@ FGTank::FGTank(FGFDMExec* exec, Element* el, int tank_number)
   element_Grain = el->FindElement("grain_config");
   if (element_Grain) {
 
-    strGType = element_Grain->GetAttributeValue("type");
+    string strGType = element_Grain->GetAttributeValue("type");
     if (strGType == "CYLINDRICAL")     grainType = gtCYLINDRICAL;
     else if (strGType == "ENDBURNING") grainType = gtENDBURNING;
     else if (strGType == "FUNCTION")   {
@@ -146,7 +155,7 @@ FGTank::FGTank(FGFDMExec* exec, Element* el, int tank_number)
         Element* element_ixx = element_Grain->FindElement("ixx");
         if (element_ixx->GetAttributeValue("unit") == "KG*M2") ixx_unit = 1.0/1.35594;
         if (element_ixx->FindElement("function") != 0) {
-          function_ixx = new FGFunction(PropertyManager, element_ixx->FindElement("function"));
+          function_ixx = new FGFunction(exec, element_ixx->FindElement("function"));
         }
       } else {
         throw("For tank "+to_string(TankNumber)+" and when grain_config is specified an ixx must be specified when the FUNCTION grain type is specified.");
@@ -156,7 +165,7 @@ FGTank::FGTank(FGFDMExec* exec, Element* el, int tank_number)
         Element* element_iyy = element_Grain->FindElement("iyy");
         if (element_iyy->GetAttributeValue("unit") == "KG*M2") iyy_unit = 1.0/1.35594;
         if (element_iyy->FindElement("function") != 0) {
-          function_iyy = new FGFunction(PropertyManager, element_iyy->FindElement("function"));
+          function_iyy = new FGFunction(exec, element_iyy->FindElement("function"));
         }
       } else {
         throw("For tank "+to_string(TankNumber)+" and when grain_config is specified an iyy must be specified when the FUNCTION grain type is specified.");
@@ -166,7 +175,7 @@ FGTank::FGTank(FGFDMExec* exec, Element* el, int tank_number)
         Element* element_izz = element_Grain->FindElement("izz");
         if (element_izz->GetAttributeValue("unit") == "KG*M2") izz_unit = 1.0/1.35594;
         if (element_izz->FindElement("function") != 0) {
-          function_izz = new FGFunction(PropertyManager, element_izz->FindElement("function"));
+          function_izz = new FGFunction(exec, element_izz->FindElement("function"));
         }
       } else {
         throw("For tank "+to_string(TankNumber)+" and when grain_config is specified an izz must be specified when the FUNCTION grain type is specified.");
@@ -186,10 +195,9 @@ FGTank::FGTank(FGFDMExec* exec, Element* el, int tank_number)
     switch (grainType) {
       case gtCYLINDRICAL:
         if (Radius <= InnerRadius) {
-          cerr << element_Grain->ReadFrom()
-               << "The bore diameter should be smaller than the total grain diameter!"
-               << endl;
-          exit(-1);
+          const string s("The bore diameter should be smaller than the total grain diameter!");
+          cerr << element_Grain->ReadFrom() << endl << s << endl;
+          throw BaseException(s);
         }
         Volume = M_PI * Length * (Radius*Radius - InnerRadius*InnerRadius); // cubic inches
         break;
@@ -200,10 +208,11 @@ FGTank::FGTank(FGFDMExec* exec, Element* el, int tank_number)
         Volume = 1;  // Volume is irrelevant for the FUNCTION type, but it can't be zero!
         break;
       case gtUNKNOWN:
-        cerr << el->ReadFrom()
-             << "Unknown grain type found in this rocket engine definition."
-             << endl;
-        exit(-1);
+        {
+          const string s("Unknown grain type found in this rocket engine definition.");
+          cerr << el->ReadFrom() << endl << s << endl;
+          throw BaseException(s);
+        }
     }
     Density = (Capacity*lbtoslug)/Volume; // slugs/in^3
   }
@@ -214,9 +223,9 @@ FGTank::FGTank(FGFDMExec* exec, Element* el, int tank_number)
   Area = 40.0 * pow(Capacity/1975, 0.666666667);
 
   // A named fuel type will override a previous density value
-  if (!strFuelName.empty()) Density = ProcessFuelName(strFuelName); 
+  if (!strFuelName.empty()) Density = ProcessFuelName(strFuelName);
 
-  bind(PropertyManager);
+  bind(PropertyManager.get());
 
   Debug(0);
 }
@@ -260,17 +269,16 @@ double FGTank::Drain(double used)
 {
   double remaining = Contents - used;
 
-  if (remaining >= 0) { // Reduce contents by amount used.
-
+  if (remaining >= GetUnusable()) { // Reduce contents by amount used.
     Contents -= used;
-    PctFull = 100.0*Contents/Capacity;
-
   } else { // This tank must be empty.
+    if (Contents > GetUnusable())
+      Contents = GetUnusable();
 
-    Contents = 0.0;
-    PctFull = 0.0;
+    remaining = Contents;
   }
 
+  PctFull = 100.0*Contents/Capacity;
   CalculateInertias();
 
   return remaining;
@@ -369,8 +377,9 @@ void FGTank::CalculateInertias(void)
     } else if (Contents <= 0.0) {
       Volume = 0;
     } else {
-      cerr << endl << "  Solid propellant grain density is zero!" << endl << endl;
-      exit(-1);
+      const string s("  Solid propellant grain density is zero!");
+      cerr << endl << s << endl;
+      throw BaseException(s);
     }
 
     switch (grainType) {
@@ -393,9 +402,11 @@ void FGTank::CalculateInertias(void)
       Izz = function_izz->GetValue()*izz_unit;
       break;
     default:
-      cerr << "Unknown grain type found." << endl;
-      exit(-1);
-      break;
+      {
+        const string s("Unknown grain type found.");
+        cerr << s << endl;
+        throw BaseException(s);
+      }
     }
 
   } else { // assume liquid propellant: shrinking snowball
@@ -409,7 +420,7 @@ void FGTank::CalculateInertias(void)
 
 double FGTank::ProcessFuelName(const std::string& name)
 {
-   if      (name == "AVGAS")    return 6.02; 
+   if      (name == "AVGAS")    return 6.02;
    else if (name == "JET-A")    return 6.74;
    else if (name == "JET-A1")   return 6.74;
    else if (name == "JET-B")    return 6.48;
@@ -436,7 +447,7 @@ double FGTank::ProcessFuelName(const std::string& name)
    else if (name == "AVCAT")    return 6.81;
    else {
      cerr << "Unknown fuel type specified: "<< name << endl;
-   } 
+   }
 
    return 6.6;
 }
@@ -450,8 +461,13 @@ void FGTank::bind(FGPropertyManager* PropertyManager)
   property_name = base_property_name + "/contents-lbs";
   PropertyManager->Tie( property_name.c_str(), (FGTank*)this, &FGTank::GetContents,
                                        &FGTank::SetContents );
+  property_name = base_property_name + "/unusable-volume-gal";
+  PropertyManager->Tie( property_name.c_str(), (FGTank*)this, &FGTank::GetUnusableVolume,
+                        &FGTank::SetUnusableVolume );
   property_name = base_property_name + "/pct-full";
   PropertyManager->Tie( property_name.c_str(), (FGTank*)this, &FGTank::GetPctFull);
+  property_name = base_property_name + "/density-lbs_per_gal";
+  PropertyManager->Tie( property_name.c_str(), (FGTank*)this, &FGTank::GetDensity);
 
   property_name = base_property_name + "/priority";
   PropertyManager->Tie( property_name.c_str(), (FGTank*)this, &FGTank::GetPriority,
@@ -500,7 +516,20 @@ void FGTank::Debug(int from)
 
   if (debug_lvl & 1) { // Standard console startup message output
     if (from == 0) { // Constructor
-      cout << "      " << type << " tank holds " << Capacity << " lbs. " << type << endl;
+      string type;
+      switch (Type) {
+      case ttFUEL:
+        type = "FUEL";
+        break;
+      case ttOXIDIZER:
+        type = "OXIDIZER";
+        break;
+      default:
+        type = "UNKNOWN";
+        break;
+      }
+
+      cout << "      " << Name << " (" << type << ") tank holds " << Capacity << " lbs. " << type << endl;
       cout << "      currently at " << PctFull << "% of maximum capacity" << endl;
       cout << "      Tank location (X, Y, Z): " << vXYZ(eX) << ", " << vXYZ(eY) << ", " << vXYZ(eZ) << endl;
       cout << "      Effective radius: " << Radius << " inches" << endl;
@@ -520,8 +549,6 @@ void FGTank::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

@@ -20,7 +20,8 @@
 #
 
 import pandas as pd
-from JSBSim_utils import JSBSimTestCase, CreateFDM, RunTest, ExecuteUntil, FindDifferences
+import xml.etree.ElementTree as et
+from JSBSim_utils import JSBSimTestCase, RunTest, ExecuteUntil, FindDifferences
 
 
 class TestSuspend(JSBSimTestCase):
@@ -35,10 +36,17 @@ class TestSuspend(JSBSimTestCase):
         self.ref = pd.read_csv('BallOut.csv', index_col=0)
 
     def initFDM(self):
-        fdm = CreateFDM(self.sandbox)
-        script_path = self.sandbox.path_to_jsbsim_file('scripts',
-                                                       'cannonball.xml')
-        fdm.load_script(script_path)
+        script_name = 'cannonball.xml'
+        script_path = self.sandbox.path_to_jsbsim_file('scripts', script_name)
+        # To prevent running into issues with floating point exceptions
+        tree = et.parse(script_path)
+        run_tag = tree.getroot().find('./run')
+        run_tag.attrib['end'] = '36'
+        tree.write(script_name)
+
+        fdm = self.create_fdm()
+        fdm.load_script(script_name)
+
         fdm['simulation/integrator/rate/rotational'] = 5
         fdm['simulation/integrator/rate/translational'] = 5
         fdm['simulation/integrator/position/rotational'] = 5
@@ -53,7 +61,7 @@ class TestSuspend(JSBSimTestCase):
 
         fdm.suspend_integration()
         fdm.disable_output()
-        for i in xrange(5):
+        for i in range(5):
             fdm.run()
         fdm.resume_integration()
         fdm.enable_output()
@@ -74,7 +82,7 @@ class TestSuspend(JSBSimTestCase):
         ExecuteUntil(fdm, 1.0)
 
         fdm.hold()
-        for i in xrange(5):
+        for i in range(5):
             fdm.run()
         fdm.resume()
 

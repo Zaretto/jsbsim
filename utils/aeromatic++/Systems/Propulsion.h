@@ -12,12 +12,12 @@
 // modify it under the terms of the GNU Lesser General Public
 // License as published by the Free Software Foundation; either
 // version 2.1 of the License, or (at your option) any later version.
-// 
+//
 // This library is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 // Lesser General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Lesser General Public
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA
@@ -39,25 +39,26 @@ class Engine : public System
 {
 public:
     Engine(Aeromatic *a, Propulsion *p) : System(a, true),
-        _propulsion(p),
-        _thruster(0),
-        _power(1000.0f) {}
+        _propulsion(p) {}
 
     ~Engine() {
         delete _thruster;
     }
 
-    virtual std::string system();
+    virtual std::string system() override;
     virtual std::string engine() { return ""; }
+    virtual std::string json() {
+        return _thruster ? _thruster->json() : "";
+    }
 
     virtual std::string get_thruster() {
         return _thruster->get_name();
     }
 
 public:
-    Propulsion *_propulsion;
-    Thruster *_thruster;
-    float _power;
+    Propulsion *_propulsion = nullptr;
+    Thruster *_thruster = nullptr;
+    float _power = 1000.0f;
 
     int _mount_point[8];
 };
@@ -68,20 +69,20 @@ public:
     PistonEngine(Aeromatic *a, Propulsion *p);
     ~PistonEngine() {}
 
-    std::string engine();
+    std::string engine() override;
 
-    std::string lift() {
+    std::string lift() override {
         return _thruster->lift();
     }
-    std::string pitch() {
+    std::string pitch() override {
         return _thruster->pitch();
     }
-    std::string roll() {
+    std::string roll() override {
         return _thruster->roll();
     }
 
 public:
-    float _max_rpm;
+    float _max_rpm = 2400.0f;
 };
 
 
@@ -98,25 +99,25 @@ public:
     TurbopropEngine(Aeromatic *a, Propulsion *p);
     ~TurbopropEngine() {}
 
-    std::string engine();
+    std::string engine() override;
 
-    std::string lift() {
+    std::string lift() override {
         return _thruster->lift();
     }
-    std::string pitch() {
+    std::string pitch() override {
         return _thruster->pitch();
     }
-    std::string roll() {
+    std::string roll() override {
         return _thruster->roll();
     }
 
 public:
-    float _max_rpm;
-    float _oapr;
-    float _itt;
+    float _max_rpm = 23500.0f;
+    float _oapr = 16.0f;
+    float _itt = 800.0f;
 
 private:
-    bool _water_injection;
+    bool _water_injection = false;
 
     static float const _eng_pwr_t[6][13];
 };
@@ -128,13 +129,14 @@ public:
     TurbineEngine(Aeromatic *a, Propulsion *p);
     ~TurbineEngine() {}
 
-    std::string engine();
+    std::string engine() override;
+    std::string json() override;
 
 private:
-    float _oapr;
-    float _bypass_ratio;
-    bool _injected;
-    bool _augmented;
+    float _oapr = 16.0f;
+    float _bypass_ratio = 1.0f;
+    bool _injected = false;
+    bool _augmented = false;
 
     static float const _milthrust_t[8][8];
 };
@@ -145,7 +147,8 @@ public:
     RocketEngine(Aeromatic *a, Propulsion *p);
     ~RocketEngine() {}
 
-    std::string engine();
+    std::string engine() override;
+    std::string json() override;
 };
 
 class ElectricEngine : public Engine
@@ -154,10 +157,10 @@ public:
     ElectricEngine(Aeromatic *a, Propulsion *p);
     ~ElectricEngine() {}
 
-    std::string engine();
+    std::string engine() override;
 
 public:
-    float _max_rpm;
+    float _max_rpm = 2400.0f;
 };
 
 
@@ -167,28 +170,29 @@ public:
     Propulsion(Aeromatic *p);
     ~Propulsion();
 
-    void set(const float* cg_loc);
-    std::string comment();
-    std::string fdm();
-    std::string mass_balance();
-    std::string system();
+    void set(const float cg_loc[3]) override;
+    std::string comment() override;
+    std::string fdm() override;
+    std::string json(const float cg_loc[3]) override;
+    std::string mass_balance() override;
+    std::string system() override;
 
-    std::string lift() {
+    std::string lift() override {
         return _propulsion[_ptype]->lift();
     }
-    std::string drag() {
+    std::string drag() override {
         return _propulsion[_ptype]->drag();
     }
-    std::string side() {
+    std::string side() override {
         return _propulsion[_ptype]->side();
     }
-    std::string roll() {
+    std::string roll() override {
         return _propulsion[_ptype]->roll();
     }
-    std::string pitch() {
+    std::string pitch() override {
         return _propulsion[_ptype]->pitch();
     }
-    std::string yaw() {
+    std::string yaw() override {
         return _propulsion[_ptype]->yaw();
     }
 
@@ -200,7 +204,7 @@ public:
          return _propulsion[_ptype]->engine();
     }
 
-    std::string get_thruster() {
+    std::string get_thruster() override {
         return _propulsion[_ptype]->_thruster->get_name();
     }
 
@@ -208,16 +212,16 @@ public:
          return _propulsion[_ptype]->_thruster->thruster();
     }
 
-    void param_reset();
-    Param* param_next();
+    void param_reset() override;
+    Param* param_next() override;
 
-    char _engine_name[PARAM_MAX_STRING+1];
+    char _engine_name[PARAM_MAX_STRING+1] = "";
 public:
-    Engine *_propulsion[MAX_PROPULSION];
-    unsigned _ptype;
+    std::vector<Engine*> _propulsion;
+    unsigned _ptype = PISTON;
 
     /* engines */
-    unsigned _layout;
+    unsigned _layout = FWD_FUSELAGE;
 
     float _eng_loc[8][3];
     float _eng_orient[8][3];
@@ -229,9 +233,12 @@ public:
     float _tank_capacity;
     float _tank_contents;
     float _fuel_weight;
+
+    float _weight;
+    float _diameter;
+    float _length;
 };
 
 } // namespace Aeromatic
 
 #endif /* __ENGINE_H */
-

@@ -41,12 +41,7 @@ INCLUDES
 #include <fstream>
 
 #include "FGOutputFile.h"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_OUTPUTTEXTFILE "$Id: FGOutputTextFile.h,v 1.4 2012/12/15 16:13:58 bcoconni Exp $"
+#include "simgear/io/iostreams/sgstream.hxx"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
@@ -82,19 +77,18 @@ public:
   /** Init the output directives from an XML file.
       @param element XML Element that is pointing to the output directives
   */
-  virtual bool Load(Element* el);
+  bool Load(Element* el) override;
 
   /// Generates the output to the text file.
-  virtual void Print(void);
+  void Print(void) override;
 
 protected:
   std::string delimeter;
-  std::ofstream datafile;
+  sg_ofstream datafile;
 
-  virtual bool OpenFile(void);
-  virtual void CloseFile(void) { if (datafile.is_open()) datafile.close(); }
+  bool OpenFile(void) override;
+  void CloseFile(void) override { if (datafile.is_open()) datafile.close(); }
 };
 }
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #endif
-

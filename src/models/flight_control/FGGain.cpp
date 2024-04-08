@@ -7,21 +7,21 @@
  ------------- Copyright (C) 2000 -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -38,17 +38,14 @@ INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 #include "FGGain.h"
-#include "input_output/FGXMLElement.h"
-#include <iostream>
-#include <string>
-#include <cstdlib>
+#include "models/FGFCS.h"
+#include "math/FGParameterValue.h"
+#include "math/FGTable.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGGain.cpp,v 1.25 2014/01/13 10:46:09 ehofman Exp $");
-IDENT(IdHdr,ID_GAIN);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -56,39 +53,30 @@ CLASS IMPLEMENTATION
 
 FGGain::FGGain(FGFCS* fcs, Element* element) : FGFCSComponent(fcs, element)
 {
-  Element *scale_element, *zero_centered;
-  string strScheduledBy, gain_string, sZeroCentered;
-
-  GainPropertyNode = 0;
-  GainPropertySign = 1.0;
-  Gain = 1.000;
-  Rows = 0;
-  Table = 0;
+  Gain = nullptr;
+  Table = nullptr;
   InMin = -1.0;
   InMax =  1.0;
   OutMin = OutMax = 0.0;
 
+  CheckInputNodes(1, 1, element);
+
   if (Type == "PURE_GAIN") {
     if ( !element->FindElement("gain") ) {
-      cerr << highint << "      No GAIN specified (default: 1.0)" << normint << endl;
+      FGXMLLogging log(fcs->GetExec()->GetLogger(), element, LogLevel::ERROR);
+      log << LogFormat::BOLD << "      No GAIN specified (default: 1.0)\n";
     }
   }
 
-  if ( element->FindElement("gain") ) {
-    gain_string = element->FindElementValue("gain");
-    if (!is_number(gain_string)) { // property
-      if (gain_string[0] == '-') {
-       GainPropertySign = -1.0;
-       gain_string.erase(0,1);
-      }
-      GainPropertyNode = PropertyManager->GetNode(gain_string);
-    } else {
-      Gain = element->FindElementValueAsNumber("gain");
-    }
-  }
+  auto PropertyManager = fcs->GetPropertyManager();
+  Element* gain_element = element->FindElement("gain");
+  if (gain_element)
+    Gain = new FGParameterValue(gain_element, PropertyManager);
+  else
+    Gain = new FGRealValue(1.0);
 
   if (Type == "AEROSURFACE_SCALE") {
-    scale_element = element->FindElement("domain");
+    Element* scale_element = element->FindElement("domain");
     if (scale_element) {
       if (scale_element->FindElement("max") && scale_element->FindElement("min") )
       {
@@ -97,21 +85,26 @@ FGGain::FGGain(FGFCS* fcs, Element* element) : FGFCSComponent(fcs, element)
       }
     }
     scale_element = element->FindElement("range");
-    if (!scale_element) throw(string("No range supplied for aerosurface scale component"));
+    if (!scale_element) {
+      XMLLogException err(fcs->GetExec()->GetLogger(), scale_element);
+      err << "No range supplied for aerosurface scale component\n";
+      throw err;
+    }
     if (scale_element->FindElement("max") && scale_element->FindElement("min") )
     {
       OutMax = scale_element->FindElementValueAsNumber("max");
       OutMin = scale_element->FindElementValueAsNumber("min");
     } else {
-      cerr << "Maximum and minimum output values must be supplied for the "
-              "aerosurface scale component" << endl;
-      exit(-1);
+      XMLLogException err(fcs->GetExec()->GetLogger(), scale_element);
+      err << "Maximum and minimum output values must be supplied for the "
+             "aerosurface scale component\n";
+      throw err;
     }
     ZeroCentered = true;
-    zero_centered = element->FindElement("zero_centered");
+    Element* zero_centered = element->FindElement("zero_centered");
     //ToDo if zero centered, then mins must be <0 and max's must be >0
     if (zero_centered) {
-      sZeroCentered = element->FindElementValue("zero_centered");
+      string sZeroCentered = element->FindElementValue("zero_centered");
       if (sZeroCentered == string("0") || sZeroCentered == string("false")) {
         ZeroCentered = false;
       }
@@ -122,12 +115,13 @@ FGGain::FGGain(FGFCS* fcs, Element* element) : FGFCSComponent(fcs, element)
     if (element->FindElement("table")) {
       Table = new FGTable(PropertyManager, element->FindElement("table"));
     } else {
-      cerr << "A table must be provided for the scheduled gain component" << endl;
-      exit(-1);
+      XMLLogException err(fcs->GetExec()->GetLogger(), element);
+      err << "A table must be provided for the scheduled gain component\n";
+      throw err;
     }
   }
 
-  FGFCSComponent::bind();
+  bind(element, PropertyManager.get());
 
   Debug(0);
 }
@@ -145,11 +139,7 @@ FGGain::~FGGain()
 
 bool FGGain::Run(void )
 {
-  double SchedGain = 1.0;
-
-  Input = InputNodes[0]->getDoubleValue() * InputSigns[0];
-
-  if (GainPropertyNode != 0) Gain = GainPropertyNode->getDoubleValue() * GainPropertySign;
+  Input = InputNodes[0]->getDoubleValue();
 
   if (Type == "PURE_GAIN") {                       // PURE_GAIN
 
@@ -157,7 +147,7 @@ bool FGGain::Run(void )
 
   } else if (Type == "SCHEDULED_GAIN") {           // SCHEDULED_GAIN
 
-    SchedGain = Table->GetValue();
+    double SchedGain = Table->GetValue();
     Output = Gain * SchedGain * Input;
 
   } else if (Type == "AEROSURFACE_SCALE") {        // AEROSURFACE_SCALE
@@ -174,11 +164,11 @@ bool FGGain::Run(void )
       Output = OutMin + ((Input - InMin) / (InMax - InMin)) * (OutMax - OutMin);
     }
 
-    Output *= Gain;
+    Output *= Gain->GetValue();
   }
 
   Clip();
-  if (IsOutput) SetOutput();
+  SetOutput();
 
   return true;
 }
@@ -191,7 +181,7 @@ bool FGGain::Run(void )
 //       variable is not set, debug_lvl is set to 1 internally
 //    0: This requests JSBSim not to output any messages
 //       whatsoever.
-//    1: This value explicity requests the normal JSBSim
+//    1: This value explicitly requests the normal JSBSim
 //       startup messages
 //    2: This value asks for a message to be printed out when
 //       a class is instantiated
@@ -208,36 +198,30 @@ void FGGain::Debug(int from)
 
   if (debug_lvl & 1) { // Standard console startup message output
     if (from == 0) { // Constructor
-      if (InputSigns[0] < 0)
-        cout << "      INPUT: -" << InputNodes[0]->GetName() << endl;
-      else
-        cout << "      INPUT: " << InputNodes[0]->GetName() << endl;
+      FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
+      log << "      INPUT: " << InputNodes[0]->GetNameWithSign() << "\n";
+      log << "      GAIN: " << Gain->GetName() << fixed << "\n";
 
-      if (GainPropertyNode != 0) {
-        cout << "      GAIN: " << GainPropertyNode->GetName() << endl;
-      } else {
-        cout << "      GAIN: " << Gain << endl;
-      }
-      if (IsOutput) {
-        for (unsigned int i=0; i<OutputNodes.size(); i++)
-          cout << "      OUTPUT: " << OutputNodes[i]->getName() << endl;
-      }
+      for (auto node: OutputNodes)
+        log << "      OUTPUT: " << node->getNameString() << "\n";
+
       if (Type == "AEROSURFACE_SCALE") {
-        cout << "      In/Out Mapping:" << endl;
-        cout << "        Input MIN: " << InMin << endl;
-        cout << "        Input MAX: " << InMax << endl;
-        cout << "        Output MIN: " << OutMin << endl;
-        cout << "        Output MAX: " << OutMax << endl;
+        log << "      In/Out Mapping:\n" << setprecision(4);
+        log << "        Input MIN: " << InMin << "\n";
+        log << "        Input MAX: " << InMax << "\n";
+        log << "        Output MIN: " << OutMin << "\n";
+        log << "        Output MAX: " << OutMax << "\n";
       }
-      if (Table != 0) {
-        cout << "      Scheduled by table: " << endl;
+      if (Table) {
+        log << "      Scheduled by table:\n";
         Table->Print();
       }
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGGain" << endl;
-    if (from == 1) cout << "Destroyed:    FGGain" << endl;
+    FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGGain\n";
+    if (from == 1) log << "Destroyed:    FGGain\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -247,8 +231,6 @@ void FGGain::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

@@ -41,12 +41,7 @@ INCLUDES
 #include <string>
 
 #include "FGXMLElement.h"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_MODELLOADER "$Id: FGModelLoader.h,v 1.1 2014/06/09 11:52:06 bcoconni Exp $"
+#include "simgear/misc/sg_path.hxx"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
@@ -75,7 +70,7 @@ private:
   std::map<std::string, Element_ptr> CachedFiles;
 };
 
- std::string CheckFullPathName(const std::string& path, const std::string& fname);
+SGPath CheckPathName(const SGPath& path, const SGPath& filename);
 }
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #endif

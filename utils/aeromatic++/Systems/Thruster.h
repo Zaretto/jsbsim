@@ -50,6 +50,7 @@ public:
     virtual std::string lift() { return ""; }
     virtual std::string pitch() { return ""; }
     virtual std::string roll() { return ""; }
+    virtual std::string json() { return ""; }
 
     const char* get_name() {
         return _thruster_name;
@@ -60,14 +61,15 @@ public:
     }
 
     virtual Param* param_next() {
-        return (_param < _inputs.size()) ? _inputs[_param++] : 0;
+        return (_param < _inputs.size()) ? _inputs[_inputs_order[_param++]] : 0;
     }
 
 protected:
-    char _thruster_name[PARAM_MAX_STRING+1];
-    std::vector<Param*> _inputs;
-    unsigned _param;
-    Propulsion *_propulsion;
+    char _thruster_name[PARAM_MAX_STRING+1] = "";
+    std::vector<std::string> _inputs_order;
+    std::map<std::string,Param*> _inputs;
+    unsigned _param = 0;
+    Propulsion *_propulsion = nullptr;
 };
 
 
@@ -77,7 +79,7 @@ public:
     Direct(Propulsion *p);
     ~Direct() {}
 
-    std::string thruster();
+    std::string thruster() override;
 };
 
 
@@ -87,29 +89,34 @@ public:
     Propeller(Propulsion *p);
     ~Propeller() {}
 
-    void set_thruster(float mrpm);
-    std::string thruster();
+    void set_thruster(float mrpm) override;
+    std::string thruster() override;
 
-    std::string lift();
-    std::string pitch();
-    std::string roll();
+    std::string lift() override;
+    std::string pitch() override;
+    std::string roll() override;
+    std::string json() override;
 
     float max_rpm() { return _max_rpm; }
     float Cp0() { return _Cp0; }
     float Ct0() { return _Ct0; }
 
 private:
-    float _engine_rpm;
-    bool _fixed_pitch;
-    unsigned _blades;
-    float _diameter;
-    float _max_rpm;
-    float _max_chord;
-    float _pitch;
+    bool _fixed_pitch = true;
+    unsigned _blades = 2;
+    float _diameter = 8.0f;
+    float _density_factor = 1.0f;
+    float _specific_weight = 172.0f;
+    float _engine_rpm = 2700.0f;
+    float _max_rpm = 2100.0f;
+    float _max_chord = 0.0f;
+    float _pitch = 22.0f;
 
-    float _gear_ratio;
-    float _static_thrust;
-    float _ixx;
+    float _gear_ratio = 1.0f;
+    float _static_thrust = 0.0f;
+    float _max_thrust = 0.0f;
+    float _max_torque = 0.0f;
+    float _ixx = 0.0f;
     float _Ct0;
     float _Cp0;
 
@@ -128,7 +135,7 @@ private:
         float CP;
     };
     std::vector<_performance_t> _performance;
-    unsigned _pitch_levels;
+    unsigned _pitch_levels = 0;
 
     static float const _CL_t[180];
     static float const _CD_t[180];
@@ -144,11 +151,11 @@ public:
     Nozzle(Propulsion *p);
     ~Nozzle() {}
 
-    std::string thruster();
+    std::string thruster() override;
 
 private:
-    float _pe;
-    float _diameter;
+//  float _pe;
+    float _diameter = 3.25f;
 };
 
 } /* namespace Aeromatic */

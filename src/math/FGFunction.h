@@ -7,21 +7,21 @@ Date started: August 25 2004
  ------------- Copyright (C) 2001  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 SENTRY
@@ -34,16 +34,10 @@ SENTRY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <vector>
-#include <string>
+#include <memory>
+
 #include "FGParameter.h"
 #include "input_output/FGPropertyManager.h"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_FUNCTION "$Id: FGFunction.h,v 1.32 2015/07/12 13:03:23 bcoconni Exp $"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
@@ -52,6 +46,8 @@ FORWARD DECLARATIONS
 namespace JSBSim {
 
 class Element;
+class FGPropertyValue;
+class FGFDMExec;
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS DOCUMENTATION
@@ -89,6 +85,10 @@ A function definition consists of an operation, a value, a table, or a property
 - avg (takes n args)
 - fraction
 - mod
+- floor (takes 1 arg)
+- ceil (takes 1 arg)
+- fmod (takes 2 args)
+- roundmultiple (takes 2 args)
 - lt (less than, takes 2 args)
 - le (less equal, takes 2 args)
 - gt (greater than, takes 2 args)
@@ -122,7 +122,7 @@ An operation is defined in the configuration file as in the following example:
 A full function definition, such as is used in the aerodynamics section of a
 configuration file includes the function element, and other elements. It should
 be noted that there can be only one non-optional (non-documentation) element -
-that is, one operation element - in the top-level function definition.
+that is, one operation element or one table element - in the top-level function definition.
 Multiple value and/or property elements cannot be immediate child
 members of the function element. Almost always, the first operation within the
 function element will be a product or sum. For example:
@@ -155,17 +155,18 @@ element contains all three. What is evaluated is written algebraically as:
 
 Some operations can take only a single argument. That argument, however, can be
 an operation (such as sum) which can contain other items. The point to keep in
-mind is that it evaluates to a single value - which is just what the trigonometric
-functions require (except atan2, which takes two arguments).
+mind is that it evaluates to a single value - which is just what the
+trigonometric functions require (except atan2, which takes two arguments).
 
 <h2>Specific Function Definitions</h2>
 
-Note: In the definitions below, a "property" refers to a single property specified
-within either the <property></property> tag or the shortcut tag, \<p>\</p>. The
-keyword "value" refers to a single numeric value specified either within the \<value>\</value>
-tag or the shortcut <v></v> tag. The keyword "table" refers to a single table specified
-either within the \<table>\</table> tag or the shortcut <t></t> tag. The plural form of any
-of the three words refers to one or more instances of a property, value, or table.
+Note: In the definitions below, a "property" refers to a single property
+specified within either the <property></property> tag or the shortcut tag,
+\<p>\</p>. The keyword "value" refers to a single numeric value specified either
+within the \<value>\</value> tag or the shortcut <v></v> tag. The keyword
+"table" refers to a single table specified either within the \<table>\</table>
+tag or the shortcut <t></t> tag. The plural form of any of the three words
+refers to one or more instances of a property, value, or table.
 
 - @b sum, sums the values of all immediate child elements:
     @code
@@ -180,7 +181,8 @@ of the three words refers to one or more instances of a property, value, or tabl
       <v> 0.01 </v>
     </sum>
     @endcode
-- @b difference, subtracts the values of all immediate child elements from the value of the first child element:
+- @b difference, subtracts the values of all immediate child elements from the
+                 value of the first child element:
     @code
     <difference>
       {properties, values, tables, or other function elements}
@@ -208,7 +210,8 @@ of the three words refers to one or more instances of a property, value, or tabl
       <property> aero/coefficient/CY_beta </property>
     </product>
     @endcode
-- @b quotient, divides the value of the first immediate child element by the second immediate child element:
+- @b quotient, divides the value of the first immediate child element by the
+               second immediate child element:
     @code
     <quotient>
       {property, value, table, or other function element}
@@ -225,8 +228,8 @@ of the three words refers to one or more instances of a property, value, or tabl
       <p> position/radius-to-vehicle-ft </p>
     </quotient>
     @endcode
-- @b pow, raises the value of the first immediate child element to the power of the value
-          of the second immediate child element:
+- @b pow, raises the value of the first immediate child element to the power of
+          the value of the second immediate child element:
     @code
     <pow>
       {property, value, table, or other function element}
@@ -250,8 +253,8 @@ of the three words refers to one or more instances of a property, value, or tabl
 
     <sqrt> <v> 25.0 </v> </sqrt>
     @endcode
-- @b toradians, converts a presumed argument in degrees to radians by multiplying
-                the value of the immediate child element by pi/180:
+- @b toradians, converts a presumed argument in degrees to radians by
+                multiplying the value of the immediate child element by pi/180:
     @code
     <toradians>
       {property, value, table, or other function element}
@@ -261,8 +264,8 @@ of the three words refers to one or more instances of a property, value, or tabl
 
     <toradians> <v> 45 </v> </toradians>
     @endcode
-- @b todegrees, converts a presumed argument in radians to degrees by multiplying
-     the value of the immediate child element by 180/pi:
+- @b todegrees, converts a presumed argument in radians to degrees by
+                multiplying the value of the immediate child element by 180/pi:
     @code
     <todegrees>
       {property, value, table, or other function element}
@@ -287,23 +290,25 @@ of the three words refers to one or more instances of a property, value, or tabl
 - @b log2, calculates the log base 2 value of the immediate child element:
     @code
     <log2>
-      {property, value, table, or other function element} 
+      {property, value, table, or other function element}
     </log2>
 
     Example:
     <log2> <v> 128 </v> </log2>
     @endcode
-- @b ln, calculates the natural logarithm of the value of the immediate child element:
+- @b ln, calculates the natural logarithm of the value of the immediate child
+         element:
     @code
     <ln>
       {property, value, table, or other function element}
     </ln>
-    
+
     Example: ln(128)
 
     <ln> <v> 200 </v> </ln>
     @endcode
-- @b log10 calculates the base 10 logarithm of the value of the immediate child element
+- @b log10, calculates the base 10 logarithm of the value of the immediate child
+            element
     @code
     <log10>
       {property, value, table, or other function element}
@@ -323,7 +328,8 @@ of the three words refers to one or more instances of a property, value, or tabl
 
     <abs> <p> flight-path/gamma-rad </p> </abs>
     @endcode
-- @b sin calculates the sine of the value of the immediate child element (the argument is expected to be in radians)
+- @b sin, calculates the sine of the value of the immediate child element (the
+          argument is expected to be in radians)
     @code
     <sin>
       {property, value, table, or other function element}
@@ -333,7 +339,8 @@ of the three words refers to one or more instances of a property, value, or tabl
 
     <sin> <toradians> <p> fcs/heading-true-degrees </p> </toradians> </sin>
     @endcode
-- @b cos calculates the cosine of the value of the immediate child element (the argument is expected to be in radians)
+- @b cos, calculates the cosine of the value of the immediate child element (the
+          argument is expected to be in radians)
     @code
     <cos>
       {property, value, table, or other function element}
@@ -343,7 +350,8 @@ of the three words refers to one or more instances of a property, value, or tabl
 
     <cos> <toradians> <p> fcs/heading-true-degrees </p> </toradians> </cos>
     @endcode
-- @b tan calculates the tangent of the value of the immediate child element (the argument is expected to be in radians)
+- @b tan, calculates the tangent of the value of the immediate child element
+          (the argument is expected to be in radians)
     @code
     <tan>
       {property, value, table, or other function element}
@@ -353,10 +361,10 @@ of the three words refers to one or more instances of a property, value, or tabl
 
     <tan> <toradians> <p> fcs/heading-true-degrees </p> </toradians> </tan>
     @endcode
-- @b asin calculates the arcsine (inverse sine) of the value of the immediate child element. The
-          value provided should be in the range from -1 to +1. The value returned
-          will be expressed in radians, and will be in the range from -pi/2 to
-          +pi/2.
+- @b asin, calculates the arcsine (inverse sine) of the value of the immediate
+           child element. The value provided should be in the range from -1 to
+           +1. The value returned will be expressed in radians, and will be in
+           the range from -pi/2 to +pi/2.
     @code
     <asin>
       {property, value, table, or other function element}
@@ -366,9 +374,10 @@ of the three words refers to one or more instances of a property, value, or tabl
 
     <asin> <v> 0.5 </v> </asin>
     @endcode
-- @b acos calculates the arccosine (inverse cosine) of the value of the immediate child element. The
-          value provided should be in the range from -1 to +1. The value returned
-          will be expressed in radians, and will be in the range from 0 to pi.
+- @b acos, calculates the arccosine (inverse cosine) of the value of the
+           immediate child element. The value provided should be in the range
+           from -1 to +1. The value returned will be expressed in radians, and
+           will be in the range from 0 to pi.
     @code
     <acos>
       {property, value, table, or other function element}
@@ -378,9 +387,9 @@ of the three words refers to one or more instances of a property, value, or tabl
 
     <acos> <v> 0.5 </v> </acos>
     @endcode
-- @b atan calculates the inverse tangent of the value of the immediate child element.
-          The value returned will be expressed in radians, and will be in the
-          range from -pi/2 to +pi/2.
+- @b atan, calculates the inverse tangent of the value of the immediate child
+           element. The value returned will be expressed in radians, and will
+           be in the range from -pi/2 to +pi/2.
     @code
     <atan>
       {property, value, table, or other function element}
@@ -408,7 +417,7 @@ of the three words refers to one or more instances of a property, value, or tabl
     <min>
       {properties, values, tables, or other function elements}
     </min>
-    
+
     Example: returns the lesser of velocity and 2500
 
     <min>
@@ -421,7 +430,7 @@ of the three words refers to one or more instances of a property, value, or tabl
     <max>
       {properties, values, tables, or other function elements}
     </max>
-    
+
     Example: returns the greater of velocity and 15000
 
     <max>
@@ -432,7 +441,7 @@ of the three words refers to one or more instances of a property, value, or tabl
 - @b avg returns the average value of all the immediate child elements
     @code
     <avg>
-      {properties, values, tables, or other function elements} 
+      {properties, values, tables, or other function elements}
     </avg>
 
     Example: returns the average of the four numbers below, evaluates to 0.50.
@@ -444,7 +453,8 @@ of the three words refers to one or more instances of a property, value, or tabl
       <v> 0.50 </v>
     </avg>
     @endcode
-- @b fraction returns the fractional part of the value of the immediate child element 
+- @b fraction, returns the fractional part of the value of the immediate child
+               element
     @code
     <fraction>
       {property, value, table, or other function element}
@@ -454,7 +464,8 @@ of the three words refers to one or more instances of a property, value, or tabl
 
     <fraction> <pi/> </fraction>
     @endcode
-- @b integer returns the integer portion of the value of the immediate child element
+- @b integer, returns the integer portion of the value of the immediate child
+              element
     @code
     <integer>
       {property, value, table, or other function element}
@@ -471,13 +482,45 @@ of the three words refers to one or more instances of a property, value, or tabl
          quotient of 3 and leaves a remainder of 0.
     @code
     <mod>
-      {property, value, table, or other function element} {property, value, table, or other function element}
+      {property, value, table, or other function element}
+      {property, value, table, or other function element}
     </mod>
 
     Example: 5 mod 2, evaluates to 1
 
     <mod> <v> 5 </v> <v> 2 </v> </mod>
     @endcode
+- @b floor returns the largest integral value that is not greater than X.
+    @code
+    <floor>
+      {property, value, table, or other function element}
+    </floor>
+    @endcode
+    Examples: floor(2.3) evaluates to 2.0 while floor(-2.3) evaluates to -3.0
+- @b ceil returns the smallest integral value that is not less than X.
+    @code
+    <ceil>
+      {property, value, table, or other function element}
+    </ceil>
+    @endcode
+    Examples: ceil(2.3) evaluates to 3.0 while ceil(-2.3) evaluates to -2.0
+- @b fmod returns the floating-point remainder of X/Y (rounded towards zero)
+    @code
+    <fmod>
+      {property, value, table, or other function element}
+      {property, value, table, or other function element}
+    </fmod>
+    @endcode
+    Example: fmod(18.5, 4.2) evaluates to 1.7
+- @b roundmultiple returns the floating-point rounding of X to a multiple of M.
+                   round(X/M) * M
+    @code
+    <roundmultiple>
+      {property, value, table, or other function element}
+      {property, value, table, or other function element}
+    </roundmultiple>
+    @endcode
+    Example: roundmultiple(93.43, 5.0) evaluates to 95.0
 - @b lt returns a 1 if the value of the first immediate child element is less
         than the value of the second immediate child element, returns 0
         otherwise
@@ -494,9 +537,9 @@ of the three words refers to one or more instances of a property, value, or tabl
       <v> 10000.0 </v>
     </lt>
     @endcode
-- @b le returns a 1 if the value of the first immediate child element is less
-        than or equal to the value of the second immediate child element, returns 0
-        otherwise
+- @b le, returns a 1 if the value of the first immediate child element is less
+         than or equal to the value of the second immediate child element,
+         returns 0 otherwise
     @code
     <le>
       {property, value, table, or other function element}
@@ -526,23 +569,24 @@ of the three words refers to one or more instances of a property, value, or tabl
       <v> 10000.0 </v>
     </gt>
     @endcode
-- @b ge returns a 1 if the value of the first immediate child element is greater
-        than or equal to the value of the second immediate child element, returns 0
-        otherwise
+- @b ge, returns a 1 if the value of the first immediate child element is
+         greater than or equal to the value of the second immediate child
+         element, returns 0 otherwise
     @code
     <ge>
       {property, value, table, or other function element}
       {property, value, table, or other function element}
     </ge>
 
-    Example: returns 1 if thrust is greater than or equal to 10,000, returns 0 otherwise
+    Example: returns 1 if thrust is greater than or equal to 10,000, returns 0
+    otherwise
 
     <ge>
       <p> propulsion/engine[2]/thrust-lbs </p>
       <v> 10000.0 </v>
     </ge>
     @endcode
-- @b eq returns a 1 if the value of the first immediate child element is 
+- @b eq returns a 1 if the value of the first immediate child element is
         equal to the second immediate child element, returns 0
         otherwise
     @code
@@ -604,11 +648,11 @@ of the three words refers to one or more instances of a property, value, or tabl
       <p> control/engines-running-flag </p>
     </or>
     @endcode
-- @b not returns the inverse of the value of the supplied immediate child element
-         (e.g., returns 1 if supplied a 0)
+- @b not, returns the inverse of the value of the supplied immediate child
+          element (e.g., returns 1 if supplied a 0)
     @code
     <not>
-      {property, value, table, or other function element} 
+      {property, value, table, or other function element}
     </not>
 
     Example: returns 0 if the value of the supplied flag is 1
@@ -625,8 +669,9 @@ of the three words refers to one or more instances of a property, value, or tabl
        {property, value, table, or other function element}
      </ifthen>
 
-     Example: if flight-mode is greater than 2, then a value of 0.00 is returned, 
-              otherwise the value of the property control/pitch-lag is returned.
+     Example: if flight-mode is greater than 2, then a value of 0.00 is
+              returned, otherwise the value of the property control/pitch-lag is
+              returned.
 
      <ifthen>
        <gt> <p> executive/flight-mode </p> <v> 2 </v> </gt>
@@ -646,7 +691,6 @@ of the three words refers to one or more instances of a property, value, or tabl
      </switch>
 
      Example: if flight-mode is 2, the switch function returns 0.50
-
      <switch>
        <p> executive/flight-mode </p>
        <v> 0.25 </v>
@@ -655,21 +699,42 @@ of the three words refers to one or more instances of a property, value, or tabl
        <v> 1.00 </v>
      </switch>
      @endcode
-- @b random Takes no arguments and returns a Gaussian distributed random number
-    @code <random/> @endcode
-- @b urandom Takes no arguments and returns a uniformly distributed random number
-             between -1 and +1
-    @code<urandom/>@endcode
+- @b random Returns a normal distributed random number.
+            The function, without parameters, returns a normal distributed
+            random value with a distribution defined by the parameters
+            mean = 0.0 and standard deviation (stddev) = 1.0
+            The Mean of the distribution (its expected value, μ).
+            Which coincides with the location of its peak.
+            Standard deviation (σ): The square root of variance,
+            representing the dispersion of values from the distribution mean.
+            This shall be a positive value (σ>0).
+    @code
+    <random/>
+    <random seed="1234"/>
+    <random seed="time_now"/>
+    <random seed="time_now" mean="0.0" stddev="1.0"/>
+    @endcode
+- @b urandom Returns a uniformly distributed random number.
+             The function, without parameters, returns a random value
+             between the minimum value -1.0 and the maximum value of 1.0
+             The two maximum and minimum values can be modified using the
+             lower and upper parameters.
+    @code
+    <urandom/>
+    <random seed="1234"/>
+    <random seed="time_now"/>
+    <random seed="time_now" lower="-1.0" upper="1.0"/>
+    @endcode
 - @b pi Takes no argument and returns the value of Pi
     @code<pi/>@endcode
 - @b interpolate1d returns the result from a 1-dimensional interpolation of the
                    supplied values, with the value of the first immediate child
                    element representing the lookup value into the table, and the
                    following pairs of values representing the independent and
-                   dependent values. The first provided child element is expected
-                   to be a property. The interpolation does not extrapolate, but
-                   holds the highest value if the provided lookup value goes
-                   outside of the provided range.
+                   dependent values. The first provided child element is
+                   expected to be a property. The interpolation does not
+                   extrapolate, but holds the highest value if the provided
+                   lookup value goes outside of the provided range.
      @code
      <interpolate1d>
        {property, value, table, or other function element}
@@ -677,8 +742,8 @@ of the three words refers to one or more instances of a property, value, or tabl
        ...
      </interpolate1d>
 
-     Example: If mach is 0.4, the interpolation will return 0.375. If mach is 1.5, the interpolation
-              will return 0.60.
+     Example: If mach is 0.4, the interpolation will return 0.375. If mach is
+              1.5, the interpolation will return 0.60.
 
      <interpolate1d>
        <p> velocities/mach </p>
@@ -696,123 +761,88 @@ DECLARATION: FGFunction
 
 // Todo: Does this class need a copy constructor, like FGLGear?
 
-class FGFunction : public FGParameter
+class FGFunction : public FGParameter, public FGJSBBase
 {
 public:
+  /// Default constructor.
+  FGFunction()
+    : cached(false), cachedValue(-HUGE_VAL), pNode(nullptr), pCopyTo(nullptr) {}
 
-/** Constructor.
+  explicit FGFunction(std::shared_ptr<FGPropertyManager> pm)
+    : FGFunction()
+    { PropertyManager = pm; }
+
+  /** Constructor.
     When this constructor is called, the XML element pointed to in memory by the
     element argument is traversed. If other FGParameter-derived objects (values,
     functions, properties, or tables) are encountered, this instance of the
-    FGFunction object will store a pointer to the found object and pass the relevant
-    Element pointer to the constructor for the new object. In other words, each
-    FGFunction object maintains a list of "child" FGParameter-derived objects which
-    in turn may each contain its own list, and so on. At runtime, each object
-    evaluates its child parameters, which each may have its own child parameters to
-    evaluate.
+    FGFunction object will store a pointer to the found object and pass the
+    relevant Element pointer to the constructor for the new object. In other
+    words, each FGFunction object maintains a list of "child"
+    FGParameter-derived objects which in turn may each contain its own list, and
+    so on. At runtime, each object evaluates its child parameters, which each
+    may have its own child parameters to evaluate.
+
     @param PropertyManager a pointer to the property manager instance.
-    @param element a pointer to the Element object containing the function definition.
-    @param prefix an optional prefix to prepend to the name given to the property
-           that represents this function (if given).
+    @param element a pointer to the Element object containing the function
+                   definition.
+    @param prefix an optional prefix to prepend to the name given to the
+                  property that represents this function (if given).
 */
-  FGFunction(FGPropertyManager* PropertyManager, Element* element, const std::string& prefix="");
-  /// Destructor.
-  virtual ~FGFunction();
+  FGFunction(FGFDMExec* fdmex, Element* element, const std::string& prefix="",
+             FGPropertyValue* var=0L);
+
+  /** Destructor
+      Make sure the function is untied before destruction.
+   */
+  ~FGFunction(void) override;
 
 /** Retrieves the value of the function object.
     @return the total value of the function. */
-  double GetValue(void) const;
+  double GetValue(void) const override;
 
 /** The value that the function evaluates to, as a string.
   @return the value of the function as a string. */
   std::string GetValueAsString(void) const;
 
 /// Retrieves the name of the function.
-  std::string GetName(void) const {return Name;}
+  std::string GetName(void) const override {return Name;}
 
-/** Specifies whether to cache the value of the function, so it is calculated only
-    once per frame.
-    If shouldCache is true, then the value of the function is calculated, and
-    a flag is set so further calculations done this frame will use the cached value.
-    In order to turn off caching, cacheValue must be called with a false argument.
-    @param shouldCache specifies whether the function should cache the computed value. */
+/** Does the function always return the same result (i.e. does it apply to
+    constant parameters) ? */
+  bool IsConstant(void) const override;
+
+/** Specifies whether to cache the value of the function, so it is calculated
+    only once per frame.
+    If shouldCache is true, then the value of the function is calculated, and a
+    flag is set so further calculations done this frame will use the cached
+    value.  In order to turn off caching, cacheValue must be called with a false
+    argument.
+    @param shouldCache specifies whether the function should cache the computed
+    value. */
   void cacheValue(bool shouldCache);
 
-private:
-  std::vector <FGParameter*> Parameters;
-  FGPropertyManager* const PropertyManager;
-  bool cached;
-  double invlog2val;
-  std::string Prefix;
-  static const std::string description_string;
-  static const std::string property_string;
-  static const std::string value_string;
-  static const std::string table_string;
-  static const std::string p_string;
-  static const std::string v_string;
-  static const std::string t_string;
-  static const std::string function_string;
-  static const std::string sum_string;
-  static const std::string difference_string;
-  static const std::string product_string;
-  static const std::string quotient_string;
-  static const std::string pow_string;
-  static const std::string sqrt_string;
-  static const std::string toradians_string;
-  static const std::string todegrees_string;
-  static const std::string exp_string;
-  static const std::string log2_string;
-  static const std::string ln_string;
-  static const std::string log10_string;
-  static const std::string abs_string;
-  static const std::string sign_string;
-  static const std::string sin_string;
-  static const std::string cos_string;
-  static const std::string tan_string;
-  static const std::string asin_string;
-  static const std::string acos_string;
-  static const std::string atan_string;
-  static const std::string atan2_string;
-  static const std::string pi_string;
-  static const std::string min_string;
-  static const std::string max_string;
-  static const std::string avg_string;
-  static const std::string fraction_string;
-  static const std::string mod_string;
-  static const std::string random_string;
-  static const std::string urandom_string;
-  static const std::string integer_string;
-  static const std::string rotation_alpha_local_string;
-  static const std::string rotation_beta_local_string;
-  static const std::string rotation_gamma_local_string;
-  static const std::string rotation_bf_to_wf_string;
-  static const std::string rotation_wf_to_bf_string;
-  static const std::string lessthan_string;
-  static const std::string lessequal_string;
-  static const std::string greatthan_string;
-  static const std::string greatequal_string;
-  static const std::string equal_string;
-  static const std::string notequal_string;
-  static const std::string and_string;
-  static const std::string or_string;
-  static const std::string not_string;
-  static const std::string ifthen_string;
-  static const std::string switch_string;
-  static const std::string interpolate1d_string;
-  double cachedValue;
-  enum functionType {eTopLevel=0, eProduct, eDifference, eSum, eQuotient, ePow, eSqrt, eToRadians,
-                     eToDegrees, eExp, eAbs, eSign, eSin, eCos, eTan, eASin, eACos, eATan, eATan2,
-                     eMin, eMax, eAvg, eFrac, eInteger, eMod, eRandom, eUrandom, ePi,
-                     eLog2, eLn, eLog10, eLT, eLE, eGE, eGT, eEQ, eNE,  eAND, eOR, eNOT,
-                     eIfThen, eSwitch, eInterpolate1D, eRotation_alpha_local,
-                     eRotation_beta_local, eRotation_gamma_local, eRotation_bf_to_wf,
-                     eRotation_wf_to_bf} Type;
-  std::string Name;
-  std::string sCopyTo;        // Property name to copy function value to
-  FGPropertyNode_ptr pCopyTo; // Property node for CopyTo property string
+  enum class OddEven {Either, Odd, Even};
 
-  unsigned int GetBinary(double) const;
-  void bind(void);
+protected:
+  bool cached;
+  double cachedValue;
+  std::vector <FGParameter_ptr> Parameters;
+  std::shared_ptr<FGPropertyManager> PropertyManager;
+  SGPropertyNode_ptr pNode;
+
+  void Load(Element* element, FGPropertyValue* var, FGFDMExec* fdmex,
+            const std::string& prefix="");
+  virtual void bind(Element*, const std::string&);
+  void CheckMinArguments(Element* el, unsigned int _min);
+  void CheckMaxArguments(Element* el, unsigned int _max);
+  void CheckOddOrEvenArguments(Element* el, OddEven odd_even);
+  std::string CreateOutputNode(Element* el, const std::string& Prefix);
+
+private:
+  std::string Name;
+  SGPropertyNode_ptr pCopyTo; // Property node for CopyTo property string
+
   void Debug(int from);
 };
 

@@ -6,7 +6,7 @@
 
     <fileheader>
         <author> Jon Berndt </author>
-        <filecreationdate> 1998-07-01 </filecreationdate>
+        <filecreationdate>1998-07-01</filecreationdate>
         <version> $Revision: 1.59 $ </version>
         <description> Models the X-15 hypersonic research aircraft </description>
         <reference refID="NASA-TN-D-6208" author="Anonymous" title="EXPERIENCE WITH THE X-15 ADAPTIVE FLIGHT CONTROL SYSTEM" date="March 1971"/>
@@ -50,7 +50,7 @@
         </location>
     </metrics>
 
-    <mass_balance>
+    <mass_balance negated_crossproduct_inertia="true">
         <ixx unit="SLUG*FT2"> 3650 </ixx>
         <iyy unit="SLUG*FT2"> 80000 </iyy>
         <izz unit="SLUG*FT2"> 82000 </izz>
@@ -58,7 +58,7 @@
         <ixz unit="SLUG*FT2"> -590 </ixz>
         <iyz unit="SLUG*FT2"> 0 </iyz>
 <!--        <emptywt unit="LBS"> 15560 </emptywt> -->
-        <emptywt unit="LBS"> 14560 </emptywt> 
+        <emptywt unit="LBS"> 14560 </emptywt>
       <location name="CG" unit="IN">
             <x> 345 </x>
             <y> 0 </y>
@@ -118,16 +118,6 @@
     </ground_reactions>
     <propulsion>
         <engine file="XLR99">
-            <location unit="IN">
-                <x> 600 </x>
-                <y> 0 </y>
-                <z> 0 </z>
-            </location>
-            <orient unit="DEG">
-                <roll> 0.0 </roll>
-                <pitch> 0 </pitch>
-                <yaw> 0 </yaw>
-            </orient>
             <feed>0</feed>
             <feed>1</feed>
             <thruster file="xlr99_nozzle">
@@ -171,13 +161,13 @@
             <contents unit="LBS"> 0 </contents>
         </tank>
     </propulsion>
-    
+
     <autopilot file="X15ap"/>
 
     <flight_control name="X-15">
 
         <channel name="Pitch">
-            
+
             <summer name="Pitch Trim Sum">
                 <input>ap/elevator-cmd</input>
                 <input>fcs/elevator-cmd-norm</input>
@@ -203,7 +193,6 @@
 
             <scheduled_gain name="Pitch Scheduled Gain 1">
                 <input>fcs/pitch-gain-1</input>
-                <gain>0.017</gain>
                 <table>
                     <independentVar>fcs/elevator-pos-rad</independentVar>
                     <tableData>
@@ -231,6 +220,7 @@
                          0.697 -33.433
                     </tableData>
                 </table>
+                <gain>0.017</gain>
             </scheduled_gain>
 
             <pure_gain name="Pitch SAS Feedback">
@@ -341,11 +331,11 @@
                 </clipto>
                 <output>fcs/rudder-pos-rad</output>
             </summer>
-            
+
         </channel>
-        
+
     </flight_control>
-    
+
     <aerodynamics>
 
         <axis name="DRAG">

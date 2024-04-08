@@ -12,7 +12,7 @@
     stall speed:   74.00kts
     max weight:    12500.00 lb
     length:        51.75 ft
-    wing: 
+    wing:
      span:         65.00 ft
      area:         422.50 sq-ft
      mean chord:   6.47 ft
@@ -44,7 +44,7 @@
 
     <fileheader>
         <author> Erik Hofman </author>
-        <filecreationdate> 2003-01-01 </filecreationdate>
+        <filecreationdate>2003-01-01</filecreationdate>
         <version> $Id: DHC6.xml,v 1.24 2016/11/29 17:38:48 ehofman Exp $ </version>
         <description> DeHavilland DHC-6 </description>
       <reference title="http://www.aoc.noaa.gov/aircraft_otter.htm"/>
@@ -94,7 +94,7 @@
         </location>
     </metrics>
 
-    <mass_balance>
+    <mass_balance negated_crossproduct_inertia="true">
         <ixx unit="SLUG*FT2"> 19317 </ixx>
         <iyy unit="SLUG*FT2"> 24679 </iyy>
         <izz unit="SLUG*FT2"> 35344 </izz>
@@ -107,7 +107,7 @@
         </location>
         <pointmass name="name">
             <weight unit="LBS"> 230 </weight>
-            <location name="POINTMASS" unit="IN">
+            <location unit="IN">
                 <x> 93.6 </x>
                 <y> -18.2 </y>
                 <z> 8.4 </z>
@@ -164,16 +164,6 @@
     </ground_reactions>
     <propulsion>
         <engine file="PT6A-27">
-            <location unit="IN">
-                <x> 142.4 </x>
-                <y> -109.3 </y>
-                <z> -2.88 </z>
-            </location>
-            <orient unit="DEG">
-                <roll> 0.0 </roll>
-                <pitch> 0 </pitch>
-                <yaw> 0 </yaw>
-            </orient>
             <feed>0</feed>
             <feed>1</feed>
             <thruster file="Propeller">
@@ -190,16 +180,6 @@
             </thruster>
         </engine>
         <engine file="PT6A-27">
-            <location unit="IN">
-                <x> 142.4 </x>
-                <y> 109.3 </y>
-                <z> -2.88 </z>
-            </location>
-            <orient unit="DEG">
-                <roll> 0.0 </roll>
-                <pitch> 0 </pitch>
-                <yaw> 0 </yaw>
-            </orient>
             <feed>1</feed>
             <feed>0</feed>
             <thruster file="Propeller">
@@ -242,7 +222,7 @@
 
     <flight_control name="FCS: DHC-6 Twin Otter">
     </flight_control>
- 
+
     <aerodynamics>
 
         <axis name="DRAG">
@@ -326,7 +306,7 @@
                 <product>
                     <property>aero/qbar-psf</property>
                     <property>metrics/Sw-sqft</property>
-                    <property>fcs/elevator-pos-norm</property>
+                    <property>fcs/mag-elevator-pos-rad</property>
                     <value>0.0350</value>
                 </product>
             </function>
@@ -710,7 +690,7 @@
         </axis>
 
         <axis name="YAW">
-            <function name="aero/coefficient/Cnb"> 
+            <function name="aero/coefficient/Cnb">
                 <description>Yaw_moment_due_to_beta</description>
                 <product>
                     <property>aero/qbar-psf</property>

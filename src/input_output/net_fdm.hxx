@@ -6,7 +6,6 @@
 //
 // This file is in the Public Domain, and comes with no warranty.
 //
-// $Id: net_fdm.hxx,v 1.6 2013/11/09 14:06:36 bcoconni Exp $
 
 
 #ifndef _NET_FDM_HXX
@@ -101,8 +100,7 @@ public:
     float gear_compression[FG_MAX_WHEELS];
 
     // Environment
-    uint32_t cur_time;           // current unix time
-                                 // FIXME: make this uint64_t before 2038
+    uint32_t cur_time;           // current simulation time
     int32_t warp;                // offset in seconds to unix time
     float visibility;            // visibility in meters (for env. effects)
 

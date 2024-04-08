@@ -4,24 +4,24 @@
  Author:       Tony Peden
  Date started: 7/1/99
 
- ------------- Copyright (C) 1999  Anthony K. Peden (apeden@earthlink.net) -------------
+ --------- Copyright (C) 1999  Anthony K. Peden (apeden@earthlink.net) ---------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
  HISTORY
 --------------------------------------------------------------------------------
@@ -30,11 +30,11 @@
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
 
-The purpose of this class is to take a set of initial conditions and provide
-a kinematically consistent set of body axis velocity components, euler
-angles, and altitude.  This class does not attempt to trim the model i.e.
-the sim will most likely start in a very dynamic state (unless, of course,
-you have chosen your IC's wisely) even after setting it up with this class.
+The purpose of this class is to take a set of initial conditions and provide a
+kinematically consistent set of body axis velocity components, euler angles, and
+altitude. This class does not attempt to trim the model i.e. the sim will most
+likely start in a very dynamic state (unless, of course, you have chosen your
+IC's wisely) even after setting it up with this class.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 SENTRY
@@ -47,14 +47,11 @@ SENTRY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
+#include <memory>
+
 #include "math/FGLocation.h"
 #include "math/FGQuaternion.h"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_INITIALCONDITION "$Id: FGInitialCondition.h,v 1.47 2016/08/28 12:13:09 bcoconni Exp $"
+#include "simgear/misc/sg_path.hxx"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
@@ -65,8 +62,8 @@ namespace JSBSim {
 class FGFDMExec;
 class FGMatrix33;
 class FGColumnVector3;
-class FGAtmosphere;
 class FGAircraft;
+class FGAuxiliary;
 class FGPropertyManager;
 class Element;
 
@@ -79,11 +76,11 @@ CLASS DOCUMENTATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 /** Initializes the simulation run.
-    Takes a set of initial conditions (IC) and provide a kinematically consistent set
-    of body axis velocity components, euler angles, and altitude.  This class
-    does not attempt to trim the model i.e. the sim will most likely start in a
-    very dynamic state (unless, of course, you have chosen your IC's wisely, or
-    started on the ground) even after setting it up with this class.
+    Takes a set of initial conditions (IC) and provide a kinematically
+    consistent set of body axis velocity components, euler angles, and altitude.
+    This class does not attempt to trim the model i.e. the sim will most likely
+    start in a very dynamic state (unless, of course, you have chosen your IC's
+    wisely, or started on the ground) even after setting it up with this class.
 
    <h3>Usage Notes</h3>
 
@@ -168,8 +165,8 @@ CLASS DOCUMENTATION
    - vc (calibrated airspeed, ft/sec)
    - mach (mach)
    - vground (ground speed, ft/sec)
-   - running (-1 for all engines, 0 for no engines, 1 ... n for specific engines)
-   - trim (0 for no trim, 1 for ground trim)
+   - trim (0 for no trim, 1 for ground trim, 'Longitudinal', 'Full', 'Ground', 'Pullup', 'Custom', 'Turn')
+   - running (-1 for all engines, 0 ... n-1 for specific engines)
 
    <h3>Properties</h3>
    @property ic/vc-kts (read/write) Calibrated airspeed initial condition in knots
@@ -220,18 +217,17 @@ CLASS DOCUMENTATION
    @property ic/r-rad_sec (read/write) Yaw rate initial condition in radians/second
 
    @author Tony Peden
-   @version "$Id: FGInitialCondition.h,v 1.47 2016/08/28 12:13:09 bcoconni Exp $"
 */
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS DECLARATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-class FGInitialCondition : public FGJSBBase
+class JSBSIM_API FGInitialCondition : public FGJSBBase
 {
 public:
   /// Constructor
-  FGInitialCondition(FGFDMExec *fdmex);
+  explicit FGInitialCondition(FGFDMExec *fdmex);
   /// Destructor
   ~FGInitialCondition();
 
@@ -298,10 +294,6 @@ public:
   /** Sets the initial Altitude above ground level.
       @param agl Altitude above ground level in feet */
   void SetAltitudeAGLFtIC(double agl);
-
-  /** Sets the initial sea level radius from planet center
-      @param sl_rad sea level radius in feet */
-  void SetSeaLevelRadiusFtIC(double slr);
 
   /** Sets the initial terrain elevation.
       @param elev Initial terrain elevation in feet */
@@ -387,7 +379,7 @@ public:
 
   /** Gets the initial altitude above sea level.
       @return Initial altitude in feet. */
-  double GetAltitudeASLFtIC(void) const { return position.GetAltitudeASL(); }
+  double GetAltitudeASLFtIC(void) const;
 
   /** Gets the initial altitude above ground level.
       @return Initial altitude AGL in feet */
@@ -396,6 +388,10 @@ public:
   /** Gets the initial terrain elevation.
       @return Initial terrain elevation in feet */
   double GetTerrainElevationFtIC(void) const;
+
+  /** Gets the initial Earth position angle.
+      @return Initial Earth position angle in radians. */
+  double GetEarthPositionAngleIC(void) const { return epa; }
 
   /** Sets the initial ground speed.
       @param vg Initial ground speed in feet/second */
@@ -448,6 +444,10 @@ public:
   void SetWindNEDFpsIC(double wN, double wE, double wD);
 
   /** Sets the initial total wind speed.
+      @param mag Initial wind velocity magnitude in feet/second */
+  void SetWindMagFpsIC(double mag) { SetWindMagKtsIC(mag * fpstokts); }
+
+  /** Sets the initial total wind speed.
       @param mag Initial wind velocity magnitude in knots */
   void SetWindMagKtsIC(double mag);
 
@@ -493,27 +493,23 @@ public:
 
   /** Gets the initial wind velocity in the NED local frame
       @return Initial wind velocity in NED frame in feet/second */
-  const FGColumnVector3 GetWindNEDFpsIC(void) const {
-    const FGMatrix33& Tb2l = orientation.GetTInv();
-    FGColumnVector3 _vt_NED = Tb2l * Tw2b * FGColumnVector3(vt, 0., 0.);
-    return _vt_NED - vUVW_NED;
-  }
+  FGColumnVector3 GetWindNEDFpsIC(void) const;
 
   /** Gets the initial wind velocity in local frame.
       @return Initial wind velocity toward north in feet/second */
-  double GetWindNFpsIC(void) const { return GetNEDWindFpsIC(eX); }
+  double GetWindNFpsIC(void) const { return GetWindNEDFpsIC()(eX); }
 
   /** Gets the initial wind velocity in local frame.
       @return Initial wind velocity eastwards in feet/second */
-  double GetWindEFpsIC(void) const { return GetNEDWindFpsIC(eY); }
+  double GetWindEFpsIC(void) const { return GetWindNEDFpsIC()(eY); }
 
   /** Gets the initial wind velocity in local frame.
       @return Initial wind velocity downwards in feet/second */
-  double GetWindDFpsIC(void) const { return GetNEDWindFpsIC(eZ); }
+  double GetWindDFpsIC(void) const { return GetWindNEDFpsIC()(eZ); }
 
   /** Gets the initial total wind velocity in feet/sec.
       @return Initial wind velocity in feet/second */
-  double GetWindFpsIC(void)  const;
+  double GetWindMagFpsIC(void) const;
 
   /** Gets the initial wind direction.
       @return Initial wind direction in feet/second */
@@ -525,7 +521,7 @@ public:
   {
     const FGMatrix33& Tb2l = orientation.GetTInv();
     FGColumnVector3 _vt_NED = Tb2l * Tw2b * FGColumnVector3(vt, 0., 0.);
-    return _vt_NED(eW);
+    return -_vt_NED(eW);
   }
 
   /** Gets the initial body velocity
@@ -675,18 +671,21 @@ public:
 
   /** Loads the initial conditions.
       @param rstname The name of an initial conditions file
-      @param useStoredPath true if the stored path to the IC file should be used
+      @param useAircraftPath true if path is given relative to the aircraft path.
       @return true if successful */
-  bool Load(std::string rstname, bool useStoredPath = true );
+  bool Load(const SGPath& rstname, bool useAircraftPath = true );
 
   /** Is an engine running ?
       @param index of the engine to be checked
       @return true if the engine is running. */
   bool IsEngineRunning(unsigned int n) const { return (enginesRunning & (1 << n)) != 0; }
-  
+
   /** Does initialization file call for trim ?
-      @return true if initialization file (version 1) called for trim. */
-  bool NeedTrim(void) const { return needTrim == 0 ? false : true; }
+      @return Trim type, if any requested (version 1). */
+  int TrimRequested(void) const { return trimRequested; }
+
+  /** Initialize the initial conditions to default values */
+  void InitializeIC(void);
 
   void bind(FGPropertyManager* pm);
 
@@ -700,33 +699,32 @@ private:
   double targetNlfIC;
 
   FGMatrix33 Tw2b, Tb2w;
-  double  alpha, beta;
-  double a, e2;
+  double alpha, beta;
+  double epa;
 
   speedset lastSpeedSet;
   altitudeset lastAltitudeSet;
   latitudeset lastLatitudeSet;
   unsigned int enginesRunning;
-  int needTrim;
+  int trimRequested;
 
   FGFDMExec *fdmex;
-  FGAtmosphere* Atmosphere;
-  FGAircraft* Aircraft;
+  std::shared_ptr<FGAircraft> Aircraft;
+  std::shared_ptr<FGAuxiliary> Auxiliary;
 
   bool Load_v1(Element* document);
   bool Load_v2(Element* document);
 
-  void InitializeIC(void);
   void SetEulerAngleRadIC(int idx, double angle);
   void SetBodyVelFpsIC(int idx, double vel);
   void SetNEDVelFpsIC(int idx, double vel);
   double GetBodyWindFpsIC(int idx) const;
-  double GetNEDWindFpsIC(int idx) const;
   double GetBodyVelFpsIC(int idx) const;
   void calcAeroAngles(const FGColumnVector3& _vt_BODY);
   void calcThetaBeta(double alfa, const FGColumnVector3& _vt_NED);
   double ComputeGeodAltitude(double geodLatitude);
   bool LoadLatitude(Element* position_el);
+  void SetTrimRequest(std::string trim);
   void Debug(int from);
 };
 }

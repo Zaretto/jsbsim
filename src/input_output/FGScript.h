@@ -39,16 +39,12 @@ INCLUDES
 
 #include <vector>
 #include <map>
+#include <memory>
 
 #include "FGJSBBase.h"
 #include "FGPropertyReader.h"
 #include "input_output/FGPropertyManager.h"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_FGSCRIPT "$Id: FGScript.h,v 1.30 2015/09/20 16:32:11 bcoconni Exp $"
+#include "simgear/misc/sg_path.hxx"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
@@ -59,6 +55,7 @@ namespace JSBSim {
 class FGFDMExec;
 class FGCondition;
 class FGFunction;
+class FGPropertyValue;
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS DOCUMENTATION
@@ -161,7 +158,6 @@ CLASS DOCUMENTATION
     comes the &quot;run&quot; section, where the conditions are
     described in &quot;event&quot; clauses.</p>
     @author Jon S. Berndt
-    @version "$Id: FGScript.h,v 1.30 2015/09/20 16:32:11 bcoconni Exp $"
 */
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -188,8 +184,8 @@ public:
                       default. If a file name is passed in, it will override the
                       one present in the script.
       @return true if successful */
-  bool LoadScript(const std::string& script, double default_dT,
-                  const std::string& initfile);
+  bool LoadScript(const SGPath& script, double default_dT,
+                  const SGPath& initfile);
 
   /** This function is called each pass through the executive Run() method IF
       scripting is enabled.
@@ -224,10 +220,9 @@ private:
     double           TimeSpan;
     std::string           Name;
     std::string           Description;
-    std::vector <FGPropertyNode_ptr>  SetParam;
+    std::vector <SGPropertyNode_ptr>  SetParam;
     std::vector <std::string>  SetParamName;
-    std::vector <FGPropertyNode_ptr>  NotifyProperties;
-    std::vector <std::string>              NotifyPropertyNames;
+    std::vector <FGPropertyValue*>  NotifyProperties;
     std::vector <std::string>              DisplayString;
     std::vector <eAction> Action;
     std::vector <eType>   Type;
@@ -265,10 +260,9 @@ private:
   FGPropertyReader LocalProperties;
 
   FGFDMExec* FDMExec;
-  FGPropertyManager* PropertyManager;
+  std::shared_ptr<FGPropertyManager> PropertyManager;
   void Debug(int from);
 };
 }
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #endif
-

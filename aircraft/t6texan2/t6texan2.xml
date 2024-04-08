@@ -6,7 +6,7 @@
 
     <fileheader>
         <author> Aeromatic / David Culp </author>
-        <filecreationdate> 2001-01-01 </filecreationdate>
+        <filecreationdate>2001-01-01</filecreationdate>
         <version> $Revision: 1.14 $ </version>
         <description> T-6 Texan trainer </description>
       <note>
@@ -48,7 +48,7 @@
         </location>
     </metrics>
 
-    <mass_balance>
+    <mass_balance negated_crossproduct_inertia="true">
         <ixx unit="SLUG*FT2"> 4216.3 </ixx>
         <iyy unit="SLUG*FT2"> 7608 </iyy>
         <izz unit="SLUG*FT2"> 10355 </izz>
@@ -110,16 +110,6 @@
     </ground_reactions>
     <propulsion>
         <engine file="PT6A-68">
-            <location unit="IN">
-                <x> 12 </x>
-                <y> 0 </y>
-                <z> 0 </z>
-            </location>
-            <orient unit="DEG">
-                <roll> 0.0 </roll>
-                <pitch> 0 </pitch>
-                <yaw> 0 </yaw>
-            </orient>
             <feed>0</feed>
             <thruster file="direct">
                 <location unit="IN">

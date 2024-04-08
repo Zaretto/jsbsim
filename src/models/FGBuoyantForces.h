@@ -47,12 +47,6 @@ INCLUDES
 #include "math/FGColumnVector3.h"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_BUOYANTFORCES "$Id: FGBuoyantForces.h,v 1.18 2013/11/24 11:40:55 bcoconni Exp $"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
@@ -95,7 +89,6 @@ CLASS DOCUMENTATION
     See FGGasCell for the full configuration file format for gas cells.
 
     @author Anders Gidenstam, Jon S. Berndt
-    @version $Id: FGBuoyantForces.h,v 1.18 2013/11/24 11:40:55 bcoconni Exp $
 */
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -110,9 +103,9 @@ public:
       @param Executive a pointer to the parent executive object */
   FGBuoyantForces(FGFDMExec* Executive);
   /// Destructor
-  ~FGBuoyantForces();
+  ~FGBuoyantForces() override;
 
-  bool InitModel(void);
+  bool InitModel(void) override;
 
   /** Runs the Buoyant forces model; called by the Executive
       Can pass in a value indicating if the executive is directing the simulation to Hold.
@@ -121,14 +114,14 @@ public:
                      model, which may need to be active to listen on a socket for the
                      "Resume" command to be given.
       @return false if no error */
-  bool Run(bool Holding);
+  bool Run(bool Holding) override;
 
   /** Loads the Buoyant forces model.
       The Load function for this class expects the XML parser to
       have found the Buoyant_forces keyword in the configuration file.
       @param element pointer to the current XML element for Buoyant forces parameters.
       @return true if successful */
-  bool Load(Element* element);
+  bool Load(Element* element) override;
 
   /** Gets the total Buoyant force vector.
       @return a force vector in lbs. */
@@ -188,11 +181,10 @@ private:
 
   void bind(void);
 
-  void Debug(int from);
+  void Debug(int from) override;
 };
 
 } // namespace JSBSim
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #endif
-

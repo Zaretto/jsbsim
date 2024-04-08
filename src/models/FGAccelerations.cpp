@@ -10,28 +10,29 @@
  ------------- Copyright (C) 2011  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
 This class encapsulates the calculation of the derivatives of the state vectors
 UVW and PQR - the translational and rotational rates relative to the planet
 fixed frame. The derivatives relative to the inertial frame are also calculated
-as a side effect. Also, the derivative of the attitude quaterion is also calculated.
+as a side effect. Also, the derivative of the attitude quaterion is also
+calculated.
 
 HISTORY
 --------------------------------------------------------------------------------
@@ -54,14 +55,11 @@ INCLUDES
 
 #include "FGAccelerations.h"
 #include "FGFDMExec.h"
-#include "input_output/FGPropertyManager.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGAccelerations.cpp,v 1.29 2016/05/22 10:28:23 bcoconni Exp $");
-IDENT(IdHdr,ID_ACCELERATIONS);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -72,13 +70,11 @@ FGAccelerations::FGAccelerations(FGFDMExec* fdmex)
 {
   Debug(0);
   Name = "FGAccelerations";
-  gravType = gtWGS84;
   gravTorque = false;
 
   vPQRidot.InitMatrix();
   vUVWidot.InitMatrix();
   vUVWdot.InitMatrix();
-  vGravAccel.InitMatrix();
   vBodyAccel.InitMatrix();
 
   bind();
@@ -101,7 +97,6 @@ bool FGAccelerations::InitModel(void)
   vPQRidot.InitMatrix();
   vUVWidot.InitMatrix();
   vUVWdot.InitMatrix();
-  vGravAccel.InitMatrix();
   vBodyAccel.InitMatrix();
 
   return true;
@@ -121,7 +116,7 @@ bool FGAccelerations::Run(bool Holding)
   CalculateUVWdot();   // Translational rate derivative
 
   if (!FDMExec->GetHoldDown())
-    ResolveFrictionForces(in.DeltaT * rate);  // Update rate derivatives with friction forces
+    CalculateFrictionForces(in.DeltaT * rate);  // Update rate derivatives with friction forces
 
   Debug(2);
   return false;
@@ -150,7 +145,7 @@ void FGAccelerations::CalculatePQRdot(void)
     FGColumnVector3 R = in.Ti2b * in.vInertialPosition;
     double invRadius = 1.0 / R.Magnitude();
     R *= invRadius;
-    in.Moment += (3.0 * in.GAccel * invRadius) * (R * (in.J * R));
+    in.Moment += (3.0 * in.vGravAccel.Magnitude() * invRadius) * (R * (in.J * R));
   }
 
   // Compute body frame rotational accelerations based on the current body
@@ -161,11 +156,11 @@ void FGAccelerations::CalculatePQRdot(void)
     // The rotational acceleration in ECI is calculated so that the rotational
     // acceleration is zero in the body frame.
     vPQRdot.InitMatrix();
-    vPQRidot = in.vPQRi * (in.Ti2b * in.vOmegaPlanet);
+    vPQRidot = vPQRdot - in.vPQRi * (in.Ti2b * in.vOmegaPlanet);
   }
   else {
     vPQRidot = in.Jinv * (in.Moment - in.vPQRi * (in.J * in.vPQRi));
-    vPQRdot = vPQRidot - in.vPQRi * (in.Ti2b * in.vOmegaPlanet);
+    vPQRdot = vPQRidot + in.vPQRi * (in.Ti2b * in.vOmegaPlanet);
   }
 }
 
@@ -198,19 +193,6 @@ void FGAccelerations::CalculateUVWdot(void)
   // Include Centripetal acceleration.
   vUVWdot -= in.Ti2b * (in.vOmegaPlanet * (in.vOmegaPlanet * in.vInertialPosition));
 
-  // Include Gravitation accel
-  switch (gravType) {
-  case gtStandard:
-    {
-      double radius = in.vInertialPosition.Magnitude();
-      vGravAccel = -(in.GAccel / radius) * in.vInertialPosition;
-    }
-    break;
-  case gtWGS84:
-    vGravAccel = in.Tec2i * in.J2Grav;
-    break;
-  }
-
   if (FDMExec->GetHoldDown()) {
     // The acceleration in ECI is calculated so that the acceleration is zero
     // in the body frame.
@@ -218,8 +200,8 @@ void FGAccelerations::CalculateUVWdot(void)
     vUVWdot.InitMatrix();
   }
   else {
-    vUVWdot += in.Ti2b * vGravAccel;
-    vUVWidot = in.Tb2i * vBodyAccel + vGravAccel;
+    vUVWdot += in.Tec2b * in.vGravAccel;
+    vUVWidot = in.Tb2i * vBodyAccel + in.Tec2i * in.vGravAccel;
   }
 }
 
@@ -230,13 +212,13 @@ void FGAccelerations::SetHoldDown(bool hd)
   if (hd) {
     vUVWidot = in.vOmegaPlanet * (in.vOmegaPlanet * in.vInertialPosition);
     vUVWdot.InitMatrix();
-    vPQRidot = in.vPQRi * (in.Ti2b * in.vOmegaPlanet);
     vPQRdot.InitMatrix();
+    vPQRidot = vPQRdot - in.vPQRi * (in.Ti2b * in.vOmegaPlanet);
   }
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-// Resolves the contact forces just before integrating the EOM.
+// Computes the contact forces just before integrating the EOM.
 // This routine is using Lagrange multipliers and the projected Gauss-Seidel
 // (PGS) method.
 // Reference: See Erin Catto, "Iterative Dynamics with Temporal Coherence",
@@ -248,11 +230,8 @@ void FGAccelerations::SetHoldDown(bool hd)
 // The friction forces are resolved in the body frame relative to the origin
 // (Earth center).
 
-void FGAccelerations::ResolveFrictionForces(double dt)
+void FGAccelerations::CalculateFrictionForces(double dt)
 {
-  const double invMass = 1.0 / in.Mass;
-  const FGMatrix33& Jinv = in.Jinv;
-  FGColumnVector3 vdot, wdot;
   vector<LagrangeMultiplier*>& multipliers = *in.MultipliersList;
   size_t n = multipliers.size();
 
@@ -267,25 +246,30 @@ void FGAccelerations::ResolveFrictionForces(double dt)
 
   // Assemble the linear system of equations
   for (unsigned int i=0; i < n; i++) {
-    FGColumnVector3 v1 = invMass * multipliers[i]->ForceJacobian;
-    FGColumnVector3 v2 = Jinv * multipliers[i]->MomentJacobian; // Should be J^-T but J is symmetric and so is J^-1
+    FGColumnVector3 U = multipliers[i]->ForceJacobian;
+    FGColumnVector3 r = multipliers[i]->LeverArm;
+    FGColumnVector3 v1 = U / in.Mass;
+    FGColumnVector3 v2 = in.Jinv * (r*U); // Should be J^-T but J is symmetric and so is J^-1
 
     for (unsigned int j=0; j < i; j++)
       a[i*n+j] = a[j*n+i]; // Takes advantage of the symmetry of Jac^T*M^-1*Jac
-    for (unsigned int j=i; j < n; j++)
-      a[i*n+j] = DotProduct(v1, multipliers[j]->ForceJacobian)
-               + DotProduct(v2, multipliers[j]->MomentJacobian);
+
+    for (unsigned int j=i; j < n; j++) {
+      U = multipliers[j]->ForceJacobian;
+      r = multipliers[j]->LeverArm;
+      a[i*n+j] = DotProduct(U, v1 + v2*r);
+    }
   }
 
   // Assemble the RHS member
 
   // Translation
-  vdot = vUVWdot;
+  FGColumnVector3 vdot = vUVWdot;
   if (dt > 0.) // Zeroes out the relative movement between the aircraft and the ground
     vdot += (in.vUVW - in.Tec2b * in.TerrainVelocity) / dt;
 
   // Rotation
-  wdot = vPQRdot;
+  FGColumnVector3 wdot = vPQRdot;
   if (dt > 0.) // Zeroes out the relative movement between the aircraft and the ground
     wdot += (in.vPQR - in.Tec2b * in.TerrainAngularVel) / dt;
 
@@ -294,12 +278,14 @@ void FGAccelerations::ResolveFrictionForces(double dt)
   // 2. Divide every line of 'a' and 'rhs' by a[i,i]. This is in order to save
   //    a division computation at each iteration of Gauss-Seidel.
   for (unsigned int i=0; i < n; i++) {
-    double d = 1.0 / a[i*n+i];
+    double d = a[i*n+i];
+    FGColumnVector3 U = multipliers[i]->ForceJacobian;
+    FGColumnVector3 r = multipliers[i]->LeverArm;
 
-    rhs[i] = -(DotProduct(multipliers[i]->ForceJacobian, vdot)
-              +DotProduct(multipliers[i]->MomentJacobian, wdot))*d;
+    rhs[i] = -DotProduct(U, vdot + wdot*r)/d;
+
     for (unsigned int j=0; j < n; j++)
-      a[i*n+j] *= d;
+      a[i*n+j] /= d;
   }
 
   // Resolve the Lagrange multipliers with the projected Gauss-Seidel method
@@ -326,12 +312,16 @@ void FGAccelerations::ResolveFrictionForces(double dt)
 
   for (unsigned int i=0; i< n; i++) {
     double lambda = multipliers[i]->value;
-    vFrictionForces += lambda * multipliers[i]->ForceJacobian;
-    vFrictionMoments += lambda * multipliers[i]->MomentJacobian;
+    FGColumnVector3 U = multipliers[i]->ForceJacobian;
+    FGColumnVector3 r = multipliers[i]->LeverArm;
+
+    FGColumnVector3 F = lambda * U;
+    vFrictionForces += F;
+    vFrictionMoments += r * F;
   }
 
-  FGColumnVector3 accel = invMass * vFrictionForces;
-  FGColumnVector3 omegadot = Jinv * vFrictionMoments;
+  FGColumnVector3 accel = vFrictionForces / in.Mass;
+  FGColumnVector3 omegadot = in.Jinv * vFrictionMoments;
 
   vBodyAccel += accel;
   vUVWdot += accel;
@@ -347,43 +337,48 @@ void FGAccelerations::InitializeDerivatives(void)
   // Make an initial run and set past values
   CalculatePQRdot();           // Angular rate derivative
   CalculateUVWdot();           // Translational rate derivative
-  ResolveFrictionForces(0.);   // Update rate derivatives with friction forces
+  CalculateFrictionForces(0.);   // Update rate derivatives with friction forces
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 void FGAccelerations::bind(void)
 {
-  typedef double (FGAccelerations::*PMF)(int) const;
+  PropertyManager->Tie("accelerations/pdot-rad_sec2", this, eP, &FGAccelerations::GetPQRdot);
+  PropertyManager->Tie("accelerations/qdot-rad_sec2", this, eQ, &FGAccelerations::GetPQRdot);
+  PropertyManager->Tie("accelerations/rdot-rad_sec2", this, eR, &FGAccelerations::GetPQRdot);
 
-  PropertyManager->Tie("accelerations/pdot-rad_sec2", this, eP, (PMF)&FGAccelerations::GetPQRdot);
-  PropertyManager->Tie("accelerations/qdot-rad_sec2", this, eQ, (PMF)&FGAccelerations::GetPQRdot);
-  PropertyManager->Tie("accelerations/rdot-rad_sec2", this, eR, (PMF)&FGAccelerations::GetPQRdot);
+  PropertyManager->Tie("accelerations/pidot-rad_sec2", this, eP, &FGAccelerations::GetPQRidot);
+  PropertyManager->Tie("accelerations/qidot-rad_sec2", this, eQ, &FGAccelerations::GetPQRidot);
+  PropertyManager->Tie("accelerations/ridot-rad_sec2", this, eR, &FGAccelerations::GetPQRidot);
 
-  PropertyManager->Tie("accelerations/udot-ft_sec2", this, eU, (PMF)&FGAccelerations::GetUVWdot);
-  PropertyManager->Tie("accelerations/vdot-ft_sec2", this, eV, (PMF)&FGAccelerations::GetUVWdot);
-  PropertyManager->Tie("accelerations/wdot-ft_sec2", this, eW, (PMF)&FGAccelerations::GetUVWdot);
+  PropertyManager->Tie("accelerations/udot-ft_sec2", this, eU, &FGAccelerations::GetUVWdot);
+  PropertyManager->Tie("accelerations/vdot-ft_sec2", this, eV, &FGAccelerations::GetUVWdot);
+  PropertyManager->Tie("accelerations/wdot-ft_sec2", this, eW, &FGAccelerations::GetUVWdot);
+
+  PropertyManager->Tie("accelerations/uidot-ft_sec2", this, eU, &FGAccelerations::GetUVWidot);
+  PropertyManager->Tie("accelerations/vidot-ft_sec2", this, eV, &FGAccelerations::GetUVWidot);
+  PropertyManager->Tie("accelerations/widot-ft_sec2", this, eW, &FGAccelerations::GetUVWidot);
 
   PropertyManager->Tie("accelerations/gravity-ft_sec2", this, &FGAccelerations::GetGravAccelMagnitude);
-  PropertyManager->Tie("simulation/gravity-model", &gravType);
   PropertyManager->Tie("simulation/gravitational-torque", &gravTorque);
-  PropertyManager->Tie("forces/fbx-weight-lbs", this, eX, (PMF)&FGAccelerations::GetWeight);
-  PropertyManager->Tie("forces/fby-weight-lbs", this, eY, (PMF)&FGAccelerations::GetWeight);
-  PropertyManager->Tie("forces/fbz-weight-lbs", this, eZ, (PMF)&FGAccelerations::GetWeight);
+  PropertyManager->Tie("forces/fbx-weight-lbs", this, eX, &FGAccelerations::GetWeight);
+  PropertyManager->Tie("forces/fby-weight-lbs", this, eY, &FGAccelerations::GetWeight);
+  PropertyManager->Tie("forces/fbz-weight-lbs", this, eZ, &FGAccelerations::GetWeight);
 
-  PropertyManager->Tie("forces/fbx-total-lbs", this, eX, (PMF)&FGAccelerations::GetForces);
-  PropertyManager->Tie("forces/fby-total-lbs", this, eY, (PMF)&FGAccelerations::GetForces);
-  PropertyManager->Tie("forces/fbz-total-lbs", this, eZ, (PMF)&FGAccelerations::GetForces);
-  PropertyManager->Tie("moments/l-total-lbsft", this, eL, (PMF)&FGAccelerations::GetMoments);
-  PropertyManager->Tie("moments/m-total-lbsft", this, eM, (PMF)&FGAccelerations::GetMoments);
-  PropertyManager->Tie("moments/n-total-lbsft", this, eN, (PMF)&FGAccelerations::GetMoments);
+  PropertyManager->Tie("forces/fbx-total-lbs", this, eX, &FGAccelerations::GetForces);
+  PropertyManager->Tie("forces/fby-total-lbs", this, eY, &FGAccelerations::GetForces);
+  PropertyManager->Tie("forces/fbz-total-lbs", this, eZ, &FGAccelerations::GetForces);
+  PropertyManager->Tie("moments/l-total-lbsft", this, eL, &FGAccelerations::GetMoments);
+  PropertyManager->Tie("moments/m-total-lbsft", this, eM, &FGAccelerations::GetMoments);
+  PropertyManager->Tie("moments/n-total-lbsft", this, eN, &FGAccelerations::GetMoments);
 
-  PropertyManager->Tie("moments/l-gear-lbsft", this, eL, (PMF)&FGAccelerations::GetGroundMoments);
-  PropertyManager->Tie("moments/m-gear-lbsft", this, eM, (PMF)&FGAccelerations::GetGroundMoments);
-  PropertyManager->Tie("moments/n-gear-lbsft", this, eN, (PMF)&FGAccelerations::GetGroundMoments);
-  PropertyManager->Tie("forces/fbx-gear-lbs", this, eX, (PMF)&FGAccelerations::GetGroundForces);
-  PropertyManager->Tie("forces/fby-gear-lbs", this, eY, (PMF)&FGAccelerations::GetGroundForces);
-  PropertyManager->Tie("forces/fbz-gear-lbs", this, eZ, (PMF)&FGAccelerations::GetGroundForces);
+  PropertyManager->Tie("moments/l-gear-lbsft", this, eL, &FGAccelerations::GetGroundMoments);
+  PropertyManager->Tie("moments/m-gear-lbsft", this, eM, &FGAccelerations::GetGroundMoments);
+  PropertyManager->Tie("moments/n-gear-lbsft", this, eN, &FGAccelerations::GetGroundMoments);
+  PropertyManager->Tie("forces/fbx-gear-lbs", this, eX, &FGAccelerations::GetGroundForces);
+  PropertyManager->Tie("forces/fby-gear-lbs", this, eY, &FGAccelerations::GetGroundForces);
+  PropertyManager->Tie("forces/fbz-gear-lbs", this, eZ, &FGAccelerations::GetGroundForces);
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -415,8 +410,9 @@ void FGAccelerations::Debug(int from)
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGAccelerations" << endl;
-    if (from == 1) cout << "Destroyed:    FGAccelerations" << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGAccelerations\n";
+    if (from == 1) log << "Destroyed:    FGAccelerations\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -426,8 +422,6 @@ void FGAccelerations::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

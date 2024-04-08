@@ -7,21 +7,21 @@
  ------------- Copyright (C) 2013 Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -34,12 +34,12 @@ Created: 6/2013 Jon S. Berndt
 COMMENTS, REFERENCES,  and NOTES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-  The Included Angle to Heading algorithm is used to find the smallest included angle
-  (the angle less than or equal to 180 degrees) to a specified heading from
-  the current heading. The sense of the rotation to get to that angle is also
-  calculated (positive 1 for a clockwise rotation, negative 1 for counter-
+  The Included Angle to Heading algorithm is used to find the smallest included
+  angle (the angle less than or equal to 180 degrees) to a specified heading
+  from the current heading. The sense of the rotation to get to that angle is
+  also calculated (positive 1 for a clockwise rotation, negative 1 for counter-
   clockwise).
-  
+
   The angle to the heading is calculated as follows:
 
   Given an angle phi:
@@ -50,7 +50,8 @@ COMMENTS, REFERENCES,  and NOTES
 
   V1*V2 = |V1||V2|cos(phi)
 
-  Since the magnitude of a unit vector is 1, we can write the equation as follows:
+  Since the magnitude of a unit vector is 1, we can write the equation as
+  follows:
 
   V1*V2 = cos(phi)
 
@@ -67,15 +68,13 @@ INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 #include "FGAngles.h"
+#include "models/FGFCS.h"
 #include "input_output/FGXMLElement.h"
-#include "input_output/FGPropertyManager.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGAngles.cpp,v 1.5 2016/07/27 22:42:47 andgi Exp $");
-IDENT(IdHdr,ID_ANGLES);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -91,6 +90,8 @@ FGAngles::FGAngles(FGFCS* fcs, Element* element) : FGFCSComponent(fcs, element)
   target_angle_unit = 1.0;
   output_unit = 1.0;
 
+  auto PropertyManager = fcs->GetPropertyManager();
+
   if (element->FindElement("target_angle") ) {
     target_angle_pNode = PropertyManager->GetNode(element->FindElementValue("target_angle"));
     if (element->FindElement("target_angle")->HasAttribute("unit")) {
@@ -99,7 +100,9 @@ FGAngles::FGAngles(FGFCS* fcs, Element* element) : FGFCSComponent(fcs, element)
       }
     }
   } else {
-    throw("Target angle is required for component: "+Name);
+    XMLLogException err(fcs->GetExec()->GetLogger(), element);
+    err << "Target angle is required for Angles component: " << Name << "\n";
+    throw err;
   }
 
   if (element->FindElement("source_angle") ) {
@@ -110,19 +113,25 @@ FGAngles::FGAngles(FGFCS* fcs, Element* element) : FGFCSComponent(fcs, element)
       }
     }
   } else {
-    throw("Source latitude is required for Angles component: "+Name);
+    XMLLogException err(fcs->GetExec()->GetLogger(), element);
+    err << "Source angle is required for Angles component: " << Name << "\n";
+    throw err;
   }
 
   unit = element->GetAttributeValue("unit");
   if (!unit.empty()) {
     if      (unit == "DEG") output_unit = 180.0/M_PI;
     else if (unit == "RAD") output_unit = 1.0;
-    else throw("Unknown unit "+unit+" in angle component, "+Name);
+    else {
+      XMLLogException err(fcs->GetExec()->GetLogger(), element);
+      err << "Unknown unit " << unit << " in angle component, " << Name << "\n";
+      throw err;
+    }
   } else {
     output_unit = 1.0; // Default is radians (1.0) if unspecified
   }
 
-  FGFCSComponent::bind();
+  bind(element, PropertyManager.get());
   Debug(0);
 }
 
@@ -154,7 +163,7 @@ bool FGAngles::Run(void )
   else              Output = -angle_to_heading_rad * output_unit;
 
   Clip();
-  if (IsOutput) SetOutput();
+  SetOutput();
 
   return true;
 }
@@ -167,7 +176,7 @@ bool FGAngles::Run(void )
 //       variable is not set, debug_lvl is set to 1 internally
 //    0: This requests JSBSim not to output any messages
 //       whatsoever.
-//    1: This value explicity requests the normal JSBSim
+//    1: This value explicitly requests the normal JSBSim
 //       startup messages
 //    2: This value asks for a message to be printed out when
 //       a class is instantiated
@@ -187,8 +196,9 @@ void FGAngles::Debug(int from)
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGAngles" << endl;
-    if (from == 1) cout << "Destroyed:    FGAngles" << endl;
+    FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGAngles\n";
+    if (from == 1) log << "Destroyed:    FGAngles\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -198,8 +208,6 @@ void FGAngles::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

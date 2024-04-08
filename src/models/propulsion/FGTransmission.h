@@ -48,12 +48,6 @@ INCLUDES
 #include "input_output/FGPropertyManager.h"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_TRANSMISSION "$Id: FGTransmission.h,v 1.1 2012/02/25 14:37:02 jentron Exp $"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
@@ -146,7 +140,7 @@ public:
   void   SetClutchCtrlNorm(double x) {ClutchCtrlNorm=x;}
 
 private:
-  bool BindModel(int num);
+  bool BindModel(int num, FGPropertyManager* pm);
   void Debug(int from);
 
   inline double omega_to_rpm(double w) {
@@ -169,11 +163,7 @@ private:
 
   double EngineRPM;
   double ThrusterRPM;
-  FGPropertyManager* PropertyManager;
-
 };
-
 }
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #endif
-

@@ -1,8 +1,10 @@
-set(SOURCES props.cxx propertyObject.cxx)
+set(SOURCES props.cxx)
 
-set(HEADERS props.hxx propertyObject.hxx)
+set(HEADERS props.hxx)
 
-add_full_path_name(PROPS_SRC "${SOURCES}")
-add_full_path_name(PROPS_HDR "${HEADERS}")
+add_library(Properties OBJECT ${HEADERS} ${SOURCES})
+set_target_properties(Properties PROPERTIES TARGET_DIRECTORY
+                                 ${CMAKE_CURRENT_SOURCE_DIR})
 
-install(FILES ${HEADERS} DESTINATION include/JSBSim/simgear/props)
+install(FILES ${HEADERS} DESTINATION include/JSBSim/simgear/props
+                         COMPONENT devel)

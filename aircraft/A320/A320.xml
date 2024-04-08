@@ -6,7 +6,7 @@
 
     <fileheader>
       <author> Unknown </author>
-      <filecreationdate> 2003-01-01 </filecreationdate>
+      <filecreationdate>2003-01-01</filecreationdate>
       <version> Version </version>
       <description> Airbus A320 </description>
       <note>
@@ -48,7 +48,7 @@
         </location>
     </metrics>
 
-    <mass_balance>
+    <mass_balance negated_crossproduct_inertia="true">
         <ixx unit="SLUG*FT2"> 942877 </ixx>
         <iyy unit="SLUG*FT2"> 2.78892e+06 </iyy>
         <izz unit="SLUG*FT2"> 3.59757e+06 </izz>
@@ -247,16 +247,6 @@
     </ground_reactions>
     <propulsion>
         <engine file="CFM56_5">
-            <location unit="IN">
-                <x> 540 </x>
-                <y> -200 </y>
-                <z> -45 </z>
-            </location>
-            <orient unit="DEG">
-                <roll> 0.0 </roll>
-                <pitch> 0 </pitch>
-                <yaw> 0 </yaw>
-            </orient>
             <feed>0</feed>
             <thruster file="direct">
                 <location unit="IN">
@@ -272,16 +262,6 @@
             </thruster>
         </engine>
         <engine file="CFM56_5">
-            <location unit="IN">
-                <x> 540 </x>
-                <y> 200 </y>
-                <z> -45 </z>
-            </location>
-            <orient unit="DEG">
-                <roll> 0.0 </roll>
-                <pitch> 0 </pitch>
-                <yaw> 0 </yaw>
-            </orient>
             <feed>1</feed>
             <thruster file="direct">
                 <location unit="IN">

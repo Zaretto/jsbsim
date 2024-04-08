@@ -12,12 +12,12 @@
 // modify it under the terms of the GNU Lesser General Public
 // License as published by the Free Software Foundation; either
 // version 2.1 of the License, or (at your option) any later version.
-// 
+//
 // This library is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 // Lesser General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Lesser General Public
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA
@@ -107,18 +107,43 @@ struct noop {
     void operator()(...) const {}
 };
 
+void help()
+{
+    printf("AeromatiC++ version " AEROMATIC_VERSION_STR "\n\n");
+    printf("Usage: aeromatic [options]\n");
+    printf("A tool to generate a JSBSim Flight Dynamics Model using just a few paremeters.\n");
+
+    printf("\nOptions:\n");
+    printf(" -l, --log <file>\t\tLog the output to a log file.\n");
+    printf(" -i, --input <file>\t\tRead the input parameters from a log file.\n");
+    printf("     --fgfs\t\tAdd FlightGear configuration files.\n");
+    printf("     --split\t\tSplit different sections into separate files.\n");
+    printf(" -h, --help\t\t\tprint this message and exit\n");
+
+    printf("\nWhen run without any parameters the program will generate an FDM and exit.\n");
+
+    printf("\n");
+    exit(-1);
+}
+
 int main(int argc, char *argv[])
 {
     Aeromatic::Aeromatic aeromatic;
     ofstream log;
     ifstream in;
 
+    if (getCommandLineOption(argc, argv, (char*)"-h") != NULL ||
+        getCommandLineOption(argc, argv, (char*)"--help") != NULL) {
+        help();
+    }
+
+
     char *file = getCommandLineOption(argc, argv, (char*)"-l");
     if (file)
     {
-       log.open(file);
-       if (log.fail() || log.bad())
-       {
+        log.open(file);
+        if (log.fail() || log.bad())
+        {
             cerr << "Failed to open logfile: " << file << endl;
             log.close();
         }
@@ -127,9 +152,9 @@ int main(int argc, char *argv[])
     file = getCommandLineOption(argc, argv, (char*)"-i");
     if (file)
     {
-       in.open(file);
-       if (in.fail() || in.bad())
-       {
+        in.open(file);
+        if (in.fail() || in.bad())
+        {
             cerr << "Failed to open parameter file: " << file << endl;
             in.close();
         }
@@ -142,35 +167,39 @@ int main(int argc, char *argv[])
         in.basic_ios<char>::rdbuf(cin.rdbuf());
     }
 
+#if defined(__GNUC__) && !defined(sgi)
+//  feenableexcept(FE_INVALID);
+#endif
+
     cout << endl;
     cout << "** AeromatiC++ version " << AEROMATIC_VERSION_STR << endl;
-    cout << "Aeromatiic is a JSBSim configuration file generation utility." << endl;
+    cout << "Aeromatic is a JSBSim configuration file generation utility." << endl;
     cout << "Please enter aircraft data when prompted." << endl << endl;
     cout << "You can always enter 'h' to get verbose help" << endl << endl;
 
     cout << "** General Information **" << endl << endl;
-    for (unsigned i=0; i<aeromatic._general.size(); ++i) {
-        ask(in, log, aeromatic._general[i]);
+    for (auto it : aeromatic._general_order) {
+        ask(in, log, aeromatic._general[it]);
     }
     cout << endl;
 
     cout << "** Weight and Balance **" << endl << endl;
-    for (unsigned i=0; i<aeromatic._weight_balance.size(); ++i) {
-        ask(in, log, aeromatic._weight_balance[i]);
-    }  
+    for (auto it : aeromatic._weight_balance_order) {
+        ask(in, log, aeromatic._weight_balance[it]);
+    }
     cout << endl;
 
     cout << "** Geometry **" << endl << endl;
-    for (unsigned i=0; i<aeromatic._geometry.size(); ++i) {
-        ask(in, log, aeromatic._geometry[i]);
+    for (auto it : aeromatic._geometry_order) {
+        ask(in, log, aeromatic._geometry[it]);
     }
     cout << endl;
 
     cout << "** Systems **" << endl << endl;
     const vector<Aeromatic::System*> systems = aeromatic.get_systems();
-    for (unsigned i=0; i<systems.size(); ++i)
+    for (auto it : systems)
     {
-        Aeromatic::System* system = systems[i];
+        Aeromatic::System* system = it;
 
 //      if (system->_inputs.size()) {
 //          cout << "  ** " << system->get_description() << endl << endl;
@@ -184,8 +213,14 @@ int main(int argc, char *argv[])
         cout << endl;
     }
 
+    bool split = getCommandLineOption(argc, argv, (char*)"--split") != NULL;
+    aeromatic._split = split;
+
     if (aeromatic.fdm())
     {
+        if (getCommandLineOption(argc, argv, (char*)"--fgfs") != NULL) {
+            aeromatic.write_fgfs();
+        }
         cout << "We're finished, the files have been written to: " << endl;
         cout << aeromatic._dir;
     }
@@ -194,6 +229,20 @@ int main(int argc, char *argv[])
         cout << aeromatic._dir;
     }
     cout << endl << endl;
+
+    auto& warnings = aeromatic.get_warnings();
+    for (auto it : warnings) {
+        cout << "Warning: " << it << endl;
+    }
+
+    cout << endl;
+
+    auto& alerts = aeromatic.get_alerts();
+    for (auto it : alerts) {
+        cout << "Alert: " << it << endl;
+    }
+
+    cout << endl << endl;;
 
     cout << "Press enter to continue." << endl;
     string input;

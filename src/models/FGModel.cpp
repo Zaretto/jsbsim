@@ -9,26 +9,26 @@
  ------------- Copyright (C) 1999  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
-This base class for the FGAerodynamics, FGPropagate, etc. classes defines methods
-common to all models.
+This base class for the FGAerodynamics, FGPropagate, etc. classes defines
+methods common to all models.
 
 HISTORY
 --------------------------------------------------------------------------------
@@ -41,13 +41,11 @@ INCLUDES
 #include "FGModel.h"
 #include "FGFDMExec.h"
 #include "input_output/FGModelLoader.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGModel.cpp,v 1.26 2015/07/12 19:34:08 bcoconni Exp $");
-IDENT(IdHdr,ID_MODEL);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 GLOBAL DECLARATIONS
@@ -69,14 +67,14 @@ FGModel::FGModel(FGFDMExec* fdmex)
   exe_ctr     = 1;
   rate        = 1;
 
-  if (debug_lvl & 2) cout << "              FGModel Base Class" << endl;
+  Debug(0);
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 FGModel::~FGModel()
 {
-  if (debug_lvl & 2) cout << "Destroyed:    FGModel" << endl;
+  Debug(1);
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -91,7 +89,7 @@ bool FGModel::InitModel(void)
 
 bool FGModel::Run(bool Holding)
 {
-  if (debug_lvl & 4) cout << "Entering Run() for model " << Name << endl;
+  FGModel::Debug(2);
 
   if (rate == 1) return false; // Fast exit if nothing to do
 
@@ -103,14 +101,14 @@ bool FGModel::Run(bool Holding)
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-string FGModel::FindFullPathName(const string& fname) const
+SGPath FGModel::FindFullPathName(const SGPath& path) const
 {
-  return CheckFullPathName(FDMExec->GetFullAircraftPath(), fname);
+  return CheckPathName(FDMExec->GetFullAircraftPath(), path);
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-bool FGModel::Load(Element* el)
+bool FGModel::Upload(Element* el, bool preLoad)
 {
   FGModelLoader ModelLoader(this);
   Element* document = ModelLoader.Open(el);
@@ -118,23 +116,27 @@ bool FGModel::Load(Element* el)
   if (!document) return false;
 
   if (document->GetName() != el->GetName()) {
-    cerr << el->ReadFrom()
-         << " Read model '" << document->GetName()
-         << "' while expecting model '" << el->GetName() << "'" << endl;
+    FGXMLLogging log(FDMExec->GetLogger(), el, LogLevel::ERROR);
+    log << " Read model '" << document->GetName()
+        << "' while expecting model '" << el->GetName() << "'" << endl;
     return false;
   }
 
-  bool result = FGModelFunctions::Load(document, PropertyManager);
+  bool result = true;
+
+  if (preLoad)
+    result = FGModelFunctions::Load(document, FDMExec);
 
   if (document != el) {
     el->MergeAttributes(document);
 
-    // After reading interface properties in a file, read properties in the
-    // local model element. This allows general-purpose models to be defined in
-    // a file, with overrides or initial loaded constants supplied in the
-    // relevant element of the aircraft configuration file.
-
-    LocalProperties.Load(el, PropertyManager, true);
+    if (preLoad) {
+      // After reading interface properties in a file, read properties in the
+      // local model element. This allows general-purpose models to be defined
+      // in a file, with overrides or initial loaded constants supplied in the
+      // relevant element of the aircraft configuration file.
+      LocalProperties.Load(el, PropertyManager.get(), true);
+    }
 
     Element* element = document->FindElement();
     while (element) {
@@ -176,10 +178,13 @@ void FGModel::Debug(int from)
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGModel" << endl;
-    if (from == 1) cout << "Destroyed:    FGModel" << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGModel" << endl;
+    if (from == 1) log << "Destroyed:    FGModel" << endl;
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
+    FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+    if (from ==2) log << "Entering Run() for model " << Name << endl;
   }
   if (debug_lvl & 8 ) { // Runtime state variables
   }
@@ -187,8 +192,6 @@ void FGModel::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

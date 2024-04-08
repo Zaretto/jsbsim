@@ -12,12 +12,12 @@
 // modify it under the terms of the GNU Lesser General Public
 // License as published by the Free Software Foundation; either
 // version 2.1 of the License, or (at your option) any later version.
-// 
+//
 // This library is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 // Lesser General Public License for more details.
-// 
+//
 // You should have received a copy of the GNU Lesser General Public
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA
@@ -43,9 +43,9 @@ std::string Engine::system()
     {
         file << "  <channel name=\"Thruster\">" << std::endl;
         file << "   <summer name=\"Thrust Coefficient Left\">" << std::endl;
-    
+
         for (unsigned i = 0; i < _aircraft->_no_engines; ++i)
-        {   
+        {
             if (_mount_point[i] == LEFT_WING) {
                 file << "    <input>propulsion/engine[" << i << "]/thrust-coefficient</input>" << std::endl;
             }
@@ -69,29 +69,32 @@ std::string Engine::system()
         file << "    <output>systems/propulsion/thrust-coefficient-left-right</output>" << std::endl;
         file << "   </summer>" << std::endl;
         file << "   <summer name=\"Thrust Coefficient\">" << std::endl;
-    
+
         file << "    <input>systems/propulsion/thrust-coefficient-left</input>" << std::endl;
         file << "    <input>systems/propulsion/thrust-coefficient-right</input>" << std::endl;
         file << "    <output>systems/propulsion/thrust-coefficient</output>" << std::endl;
         file << "   </summer>" << std::endl;
         file << "  </channel>" << std::endl;
     }
-    
+
     return file.str();
 }
 
-Propulsion::Propulsion(Aeromatic *p) : Engine(p, 0),
-    _layout(FWD_FUSELAGE)
+Propulsion::Propulsion(Aeromatic *p) : Engine(p, 0)
 {
     _description.push_back("Propulsion");
-    _inputs.push_back(new Param(_description[0].c_str(), _supported, _enabled));
+    _inputs_order.push_back("Propulsion");
+    _inputs["Propulsion"] = new Param(_description[0].c_str(), _supported, _enabled);
 
     strCopy(_engine_name, "my_engine");
-    _inputs.push_back(new Param("Engine name", "The engine name is used for the engine configuration file name", _engine_name));
+    _inputs_order.push_back("engine");
+    _inputs["engine"] = new Param("Engine name", "The engine name is used for the engine configuration file name", _engine_name);
 
-    _inputs.push_back(new Param("Number of engines", "Engines are distributed evenly across the wing span", _aircraft->_no_engines));
+    _inputs_order.push_back("noEngines");
+    _inputs["noEngines"] = new Param("Number of engines", "Engines are distributed evenly across the wing span", _aircraft->_no_engines);
     Param *layout = new Param("Engine layout", 0, _layout);
-    _inputs.push_back(layout);
+    _inputs_order.push_back("engineLayout");
+    _inputs["engineLayout"] = layout;
     layout->add_option("fwd fuselage");
     layout->add_option("mid fuselage");
     layout->add_option("aft fuselage");
@@ -99,17 +102,23 @@ Propulsion::Propulsion(Aeromatic *p) : Engine(p, 0),
     layout->add_option("wings and tail");
     layout->add_option("wings and nose");
 
-    Param *type = new Param("Engine type", 0, _ptype);
-    _inputs.push_back(type);
-    _propulsion[0] = new PistonEngine(p, this);
+    Param *type = new Param("Engine type", 0, _ptype, MAX_ENGINE);
+    _inputs_order.push_back("engineType");
+    _inputs["engineType"] = type;
+
+    _propulsion.push_back(new PistonEngine(p, this));
     type->add_option(_propulsion[0]->get_description());
-    _propulsion[1] = new TurbopropEngine(p, this);
+
+    _propulsion.push_back(new TurbopropEngine(p, this));
     type->add_option(_propulsion[1]->get_description());
-    _propulsion[2] = new TurbineEngine(p, this);
+
+    _propulsion.push_back(new TurbineEngine(p, this));
     type->add_option(_propulsion[2]->get_description());
-    _propulsion[3] = new RocketEngine(p, this);
+
+    _propulsion.push_back(new RocketEngine(p, this));
     type->add_option(_propulsion[3]->get_description());
-    _propulsion[4] = new ElectricEngine(p, this);
+
+    _propulsion.push_back(new ElectricEngine(p, this));
     type->add_option(_propulsion[4]->get_description());
 
     Engine::_propulsion = this;
@@ -117,15 +126,11 @@ Propulsion::Propulsion(Aeromatic *p) : Engine(p, 0),
 
 Propulsion::~Propulsion()
 {
-    for (unsigned i=0; i<MAX_PROPULSION; ++i) {
-        delete _propulsion[i];
+    for(auto it : _propulsion) {
+        delete it;
     }
-
-    std::vector<Param*>::iterator it;
-    for(it = _inputs.begin(); it != _inputs.end(); ++it) {
-        delete *it;
-    }
-} 
+    _propulsion.clear();
+}
 
 void Propulsion::param_reset()
 {
@@ -140,9 +145,9 @@ Param* Propulsion::param_next()
     if (_enabled)
     {
         if (_param < _inputs.size()) {
-            rv = _inputs[_param++];
-        } 
-        else 
+            rv = _inputs[_inputs_order[_param++]];
+        }
+        else
         {
             rv = _propulsion[_ptype]->param_next();
             if (rv == 0) {
@@ -208,7 +213,7 @@ std::string Propulsion::system()
     return file;
 }
 
-void Propulsion::set(const float* cg_loc)
+void Propulsion::set(const float cg_loc[3])
 {
     unsigned no_engines = _aircraft->_no_engines;
 
@@ -316,6 +321,7 @@ void Propulsion::set(const float* cg_loc)
     for (unsigned i=0; i<no_engines; ++i)
     {
         _eng_orient[i][PITCH] = 0.0f;
+        _eng_orient[i][ROLL] = 0.0f;
         _eng_orient[i][YAW] = 0.0f;
         _thruster_loc[i][X] = _eng_loc[i][X];
         _thruster_loc[i][Y] = _eng_loc[i][Y];
@@ -353,16 +359,18 @@ std::string Propulsion::mass_balance()
 {
     std::stringstream file;
 /*
+    bool& convert = _aircraft->_metric;
+
     file.precision(2);
     file.flags(std::ios::right);
     file << std::fixed << std::showpoint;
     file << "   <pointmass name=\"Fuel\">" << std::endl;
     file << "    <description> " << _fuel_weight << " fuel contents </description>" << std::endl;
-    file << "    <weight unit=\"LBS\"> " << _fuel_weight << " </weight>" << std::endl;
-    file << "    <location name=\"POINTMASS\" unit=\"IN\">" << std::endl;
-    file << "     <x> " << std::setw(8) << _tank_loc[X] << " </x>" << std::endl;
-    file << "     <y> " << std::setw(8) << _tank_loc[Y] << " </y>" << std::endl;
-    file << "     <z> " << std::setw(8) << _tank_loc[Z] << " </z>" << std::endl;
+    file << "    <weight unit=\"" << Param::get_unit(true, WEIGHT, convert) << "\"> " << Param::get(_fuel_weight, WEIGHT, convert) << " </weight>" << std::endl;
+    file << "    <location name=\"POINTMASS\" unit=\"" << Param::get_unit(true, LENGTH, convert) << "\">" << std::endl;
+    file << "     <x> " << std::setw(8) << Param::get(_tank_loc[X]*INCH_TO_FEET, LENGTH, convert) << " </x>" << std::endl;
+    file << "     <y> " << std::setw(8) << Param::get(_tank_loc[Y]*INCH_TO_FEET, LENGTH, convert) << " </y>" << std::endl;
+    file << "     <z> " << std::setw(8) << Param::get(_tank_loc[Z]*INCH_TO_FEET, LENGTH, convert) << " </z>" << std::endl;
     file << "   </location>" << std::endl;
     file << "  </pointmass>" << std::endl;
 */
@@ -373,6 +381,7 @@ std::string Propulsion::comment()
 {
     std::stringstream file;
 
+    _aircraft->_ptype = _ptype;
     unsigned no_engines = _aircraft->_no_engines;
 
     file << "    no. engines:   " << no_engines << std::endl;
@@ -407,6 +416,7 @@ std::string Propulsion::comment()
 std::string Propulsion::fdm()
 {
     unsigned no_engines = _aircraft->_no_engines;
+    bool& convert = _aircraft->_metric;
     std::stringstream file;
 
     file.precision(2);
@@ -418,24 +428,14 @@ std::string Propulsion::fdm()
     for (unsigned i=0; i<no_engines; ++i)
     {
         file << "   <engine file=\"" << _engine_name << "\">" << std::endl;
-        file << "    <location unit=\"IN\">" << std::endl;
-        file << "      <x> " << std::setw(8) << _eng_loc[i][X] << " </x>" << std::endl;
-        file << "      <y> " << std::setw(8) << _eng_loc[i][Y] << " </y>" << std::endl;
-        file << "      <z> " << std::setw(8) << _eng_loc[i][Z] << " </z>" << std::endl;
-        file << "    </location>" << std::endl;
-        file << "    <orient unit=\"DEG\">" << std::endl;
-        file << "      <pitch> " << std::setw(8) << _eng_orient[i][PITCH] << " </pitch>" << std::endl;
-        file << "       <roll> " << std::setw(8) << _eng_orient[i][ROLL] << " </roll>" << std::endl;
-        file << "        <yaw> " << std::setw(8) << _eng_orient[i][YAW] << " </yaw>" << std::endl;
-        file << "    </orient>" << std::endl;
         file << "    <feed> " << i << " </feed>" << std::endl;
         file << std::endl;
         file << "    <thruster file=\"" << get_thruster() << "\">" << std::endl;
         file << "     <sense> 1 </sense>" << std::endl;
-        file << "     <location unit=\"IN\">" << std::endl;
-        file << "       <x> " << std::setw(8) << _thruster_loc[i][X] << " </x>" << std::endl;
-        file << "       <y> " << std::setw(8) << _thruster_loc[i][Y] << " </y>" << std::endl;
-        file << "       <z> " << std::setw(8) << _thruster_loc[i][Z] << " </z>" << std::endl;
+        file << "     <location unit=\"" << Param::get_unit(true, LENGTH, convert) << "\">" << std::endl;
+        file << "       <x> " << std::setw(8) << Param::get(_thruster_loc[i][X]*INCH_TO_FEET, LENGTH, convert) << " </x>" << std::endl;
+        file << "       <y> " << std::setw(8) << Param::get(_thruster_loc[i][Y]*INCH_TO_FEET, LENGTH, convert) << " </y>" << std::endl;
+        file << "       <z> " << std::setw(8) << Param::get(_thruster_loc[i][Z]*INCH_TO_FEET, LENGTH, convert) << " </z>" << std::endl;
         file << "     </location>" << std::endl;
         file << "     <orient unit=\"DEG\">" << std::endl;
         file << "       <pitch> " << std::setw(8) << _thruster_orient[i][PITCH] << " </pitch>" << std::endl;
@@ -450,13 +450,13 @@ std::string Propulsion::fdm()
     for (unsigned i=0; i<=no_engines; ++i)
     {
         file << "  <tank type=\"FUEL\" number=\"" << i << "\">" << std::endl;
-        file << "     <location unit=\"IN\">" << std::endl;
-        file << "       <x> " << std::setw(8) << _tank_loc[X] << " </x>" << std::endl;
-        file << "       <y> " << std::setw(8) << _tank_loc[Y] << " </y>" << std::endl;
-        file << "       <z> " << std::setw(8) << _tank_loc[Z] << " </z>" << std::endl;
+        file << "     <location unit=\"" << Param::get_unit(true, LENGTH, convert) << "\">" << std::endl;
+        file << "       <x> " << std::setw(8) << Param::get(_tank_loc[X]*INCH_TO_FEET, LENGTH, convert) << " </x>" << std::endl;
+        file << "       <y> " << std::setw(8) << Param::get(_tank_loc[Y]*INCH_TO_FEET, LENGTH, convert) << " </y>" << std::endl;
+        file << "       <z> " << std::setw(8) << Param::get(_tank_loc[Z]*INCH_TO_FEET, LENGTH, convert) << " </z>" << std::endl;
         file << "     </location>" << std::endl;
-        file << "     <capacity unit=\"LBS\"> " << _tank_capacity << " </capacity>" << std::endl;
-        file << "     <contents unit=\"LBS\"> " << _tank_contents << " </contents>" << std::endl;
+        file << "     <capacity unit=\"" << Param::get_unit(true, WEIGHT, convert) << "\"> " << Param::get(_tank_capacity, WEIGHT, convert) << " </capacity>" << std::endl;
+        file << "     <contents unit=\"" << Param::get_unit(true, WEIGHT, convert) << "\"> " << Param::get(_tank_contents, WEIGHT, convert) << " </contents>" << std::endl;
         file << "  </tank>" << std::endl;
     }
 
@@ -466,13 +466,58 @@ std::string Propulsion::fdm()
     return file.str();
 }
 
+std::string Propulsion::json(const float cg_loc[3])
+{
+    unsigned no_engines = _aircraft->_no_engines;
+    std::stringstream file;
 
-PistonEngine::PistonEngine(Aeromatic *a, Propulsion *p) : Engine(a, p),
-    _max_rpm(2400.0f)
+    file.precision(1);
+    file.flags(std::ios::left);
+    file << std::fixed << std::showpoint;
+
+    std::string param = "  \"engine\"";
+    file << std::setw(12) << param << ": [ ";
+
+    for (unsigned i=0; i<no_engines; ++i)
+    {
+        file << std::endl;
+        file << "  {" << std::endl;
+        param  = "    \"pos\"";
+        file << std::setw(14) << param << ": [ "
+                   << _eng_loc[i][X]-cg_loc[X] << ", "
+                   << _eng_loc[i][Y]-cg_loc[Y] << ", "
+                   << _eng_loc[i][Z]-cg_loc[Z] << " ],"
+                   << std::endl;
+
+        param  = "    \"dir\"";
+        file << std::setw(14) << param << ": [ "
+                   << _thruster_orient[i][PITCH] << ", "
+                   << _thruster_orient[i][ROLL] << ", "
+                   << _thruster_orient[i][YAW] << " ]";
+        param = _propulsion[_ptype]->json();
+        if (!param.empty())
+        {
+            file << "," << std::endl;
+            file << std::endl;
+            file << param << std::endl;;
+        }
+        if (i == no_engines-1) file << "  }";
+        else file << "  },";
+    }
+
+    file << " ]";
+
+    return file.str();
+}
+
+
+PistonEngine::PistonEngine(Aeromatic *a, Propulsion *p) : Engine(a, p)
 {
     _description.push_back("Piston Engine");
-    _inputs.push_back(new Param("Engine power", "Providing fairly acurate engine power is critical for a good configuration", _propulsion->_power, _aircraft->_metric, POWER));
-   _inputs.push_back(new Param("Maximum engine rpm", "The maximum rpm is used to calculate the propeller power and thrust tables", _max_rpm));
+    _inputs_order.push_back("pistonPower");
+    _inputs["pistonPower"] = new Param("Engine power", "Providing fairly acurate engine power is critical for a good configuration", _propulsion->_power, _aircraft->_metric, POWER);
+   _inputs_order.push_back("pistonMaxRPM");
+   _inputs["pistonMaxRPM"] = new Param("Maximum engine rpm", "The maximum rpm is used to calculate the propeller power and thrust tables", _max_rpm);
     _thruster = new Propeller(p);
 }
 
@@ -530,7 +575,6 @@ std::string PistonEngine::engine()
     return file.str();
 }
 
-
 // http://web.mit.edu/16.unified/www/SPRING/propulsion/UnifiedPropulsion3/UnifiedPropulsion3.htm
 // http://adg.stanford.edu/aa241/propulsion/images/tvsv.gif
 // http://adg.stanford.edu/aa241/propulsion/nacelledesign.html
@@ -539,18 +583,19 @@ std::string PistonEngine::engine()
 // eng_length = 2.4077f * powf(_power, 0.3876f);
 // eng_diameter = 1.0827f * powf(_power, 0.4134f);
 
-TurbineEngine::TurbineEngine(Aeromatic *a, Propulsion *p) : Engine(a, p),
-    _oapr(16.0f),
-    _bypass_ratio(1.0f),
-    _injected(false),
-    _augmented(false)
+TurbineEngine::TurbineEngine(Aeromatic *a, Propulsion *p) : Engine(a, p)
 {
     _description.push_back("Turbine Engine");
-    _inputs.push_back(new Param("Engine mil. thrust", "Providing fairly acurate engine thrust is critical for a good configuration", _propulsion->_power, _aircraft->_metric, THRUST));
-    _inputs.push_back(new Param("Bypass ratio", "The bypass ratio is mainly used for calculating fuel consumption", _bypass_ratio));
-    _inputs.push_back(new Param("Overall pressure ratio", "Overall pressure ratio is used to finetune the estimated fuel consumption", _oapr));
-    _inputs.push_back(new Param("Augmented?", "Does the engine have afterburner capability?", _augmented));
-    _inputs.push_back(new Param("Water injection?", "Does the engine have ater injection boost?", _injected));
+    _inputs_order.push_back("turbineMiLThrust");
+    _inputs["turbineMiLThrust"] = new Param("Engine mil. thrust", "Providing fairly acurate engine thrust is critical for a good configuration", _propulsion->_power, _aircraft->_metric, THRUST);
+    _inputs_order.push_back("turbineBypassRatio");
+    _inputs["turbineBypassRatio"] = new Param("Bypass ratio", "The bypass ratio is mainly used for calculating fuel consumption", _bypass_ratio);
+    _inputs_order.push_back("turbinePressureRatio");
+    _inputs["turbinePressureRatio"] = new Param("Overall pressure ratio", "Overall pressure ratio is used to finetune the estimated fuel consumption", _oapr);
+    _inputs_order.push_back("turbineAugmentation");
+    _inputs["turbineAugmentation"] = new Param("Augmented?", "Does the engine have afterburner capability?", _augmented);
+    _inputs_order.push_back("turbineWaterInjection");
+    _inputs["turbineWaterInjection"] = new Param("Water injection?", "Does the engine have ater injection boost?", _injected);
     _thruster = new Direct(p);
 }
 
@@ -570,12 +615,11 @@ std::string TurbineEngine::engine()
     {
         if (_bypass_ratio < 0.07f) _bypass_ratio = 0.07f;
         tsfc =  0.635f - 0.144f * log10f(_oapr) * log10f(_bypass_ratio);
-        atsfc = 3.27f - 0.451f * log10f(2.9f * _oapr / _bypass_ratio);
     }
-    else
-    {
+    else {
         tsfc = 0.7533f - 0.161f * log10f(0.0625f * _oapr * _bypass_ratio);
     }
+    atsfc = 3.27f - 0.451f * log10f(2.9f * _oapr / _bypass_ratio);
 
     file.precision(1);
     file.flags(std::ios::right);
@@ -597,9 +641,9 @@ std::string TurbineEngine::engine()
      file << std::endl;
     file << "  Outputs" << std::endl;
     file << "    tsfc:                    " << tsfc << std::endl;
-    file << "    engine weight:           " << (0.4054 * powf(_propulsion->_power, 0.9255f)) << " lbs" << std::endl;
-    file << "    engine length:           " << ((2.4077f * powf(_propulsion->_power, 0.3876f) * INCH_TO_FEET) * (_augmented ? 2.0f : 1.0f)) << " ft" << std::endl;
-    file << "    engine diameter:         " << (1.0827f * powf(_propulsion->_power, 0.4134f) * INCH_TO_FEET) << " ft" <<std::endl;
+    file << "    engine weight:           " << _propulsion->_weight << " lbs" << std::endl;
+    file << "    engine length:           " << (_propulsion->_length * (_augmented ? 2.0f : 1.0f)) << " ft" << std::endl;
+    file << "    engine diameter:         " << _propulsion->_diameter << " ft" <<std::endl;
     file << "-->" << std::endl;
     file <<std::endl;
     file << "<turbine_engine name=\"" << _propulsion->_engine_name << "\">" << std::endl;
@@ -630,7 +674,7 @@ std::string TurbineEngine::engine()
     file << "    <independentVar lookup=\"row\">velocities/mach</independentVar>" << std::endl;
     file << "    <independentVar lookup=\"column\">atmosphere/density-altitude</independentVar>" << std::endl;
     file << "    <tableData>" << std::endl;
-    file << "         -10000     0     10000   20000   30000   40000   50000   60000" << std::endl;
+    file << "         -10000     0     10000   20000   30000   40000   50000   90000" << std::endl;
     file << "     0.0  0.0430  0.0488  0.0528  0.0694  0.0899  0.1183  0.1467  0" << std::endl;
     file << "     0.2  0.0500  0.0501  0.0335  0.0544  0.0797  0.1049  0.1342  0" << std::endl;
     file << "     0.4  0.0040  0.0047  0.0020  0.0272  0.0595  0.0891  0.1203  0" << std::endl;
@@ -646,7 +690,7 @@ std::string TurbineEngine::engine()
     file << "    <independentVar lookup=\"row\">velocities/mach</independentVar>" << std::endl;
     file << "    <independentVar lookup=\"column\">atmosphere/density-altitude</independentVar>" << std::endl;
     file << "    <tableData>" << std::endl;
-    file << "          -10000       0   10000   20000   30000   40000   50000   60000" << std::endl;
+    file << "          -10000       0   10000   20000   30000   40000   50000   60000   90000" << std::endl;
 
     for (unsigned i=0; i<8; ++i)
     {
@@ -657,6 +701,7 @@ std::string TurbineEngine::engine()
            file << std::fixed << std::setw(8) << std::setprecision(4);
            file << (1.0f - 0.11*M*_bypass_ratio)*_milthrust_t[i][j];
         }
+        file << std::fixed << std::setw(3) << "0";
         file << std::endl;
     }
 
@@ -693,7 +738,7 @@ std::string TurbineEngine::engine()
         file << std::endl;
     }
 
-    if (_injected) 
+    if (_injected)
     {
         file << "  <function name=\"Injection\">" << std::endl;
         file << "   <table>" << std::endl;
@@ -713,34 +758,53 @@ std::string TurbineEngine::engine()
     return file.str();
 }
 
-TurbopropEngine::TurbopropEngine(Aeromatic *a, Propulsion *p) : Engine(a, p),
-    _max_rpm(23500.0f),
-    _oapr(16.0f),
-    _itt(800.0f),
-    _water_injection(false)
+std::string TurbineEngine::json()
+{
+    std::stringstream file;
+
+    file.precision(1);
+    file.flags(std::ios::left);
+    file << std::fixed << std::showpoint;
+
+    float max_thrust = _propulsion->_power;
+    if (_augmented) {
+        max_thrust *= 1.5f;
+    }
+
+    std::string param  = "    \"FT_max\"";
+    file << std::setw(14) << param << ": " << max_thrust;
+
+    return file.str();
+}
+
+TurbopropEngine::TurbopropEngine(Aeromatic *a, Propulsion *p) : Engine(a, p)
 {
     _description.push_back("Turboprop Engine");
-    _inputs.push_back(new Param("Engine power", "Providing fairly acurate engine power is critical for a good configuration", _propulsion->_power, _aircraft->_metric, POWER));
-    _inputs.push_back(new Param("Maximum engine rpm", "The maximum rpm is used to calculate the propeller power and thrust tables", _max_rpm));
-    _inputs.push_back(new Param("Overall pressure ratio", "Overall pressure ratio is used to finetune the estimated fuel consumption", _oapr));
-    _inputs.push_back(new Param("Turbine inlet temperature", "Turbine inlet temperature is used to finetune the engine configuration", _itt));
+    _inputs_order.push_back("turbopropPower");
+    _inputs["turbopropPower"] = new Param("Engine power", "Providing fairly acurate engine power is critical for a good configuration", _propulsion->_power, _aircraft->_metric, POWER);
+    _inputs_order.push_back("turbopropMaxRPM");
+    _inputs["turbopropMaxRPM"] = new Param("Maximum engine rpm", "The maximum rpm is used to calculate the propeller power and thrust tables", _max_rpm);
+    _inputs_order.push_back("turbopropPressureRatio");
+    _inputs["turbopropPressureRatio"] = new Param("Overall pressure ratio", "Overall pressure ratio is used to finetune the estimated fuel consumption", _oapr);
+    _inputs_order.push_back("turbopropITT");
+    _inputs["turbopropITT"] = new Param("Turbine inlet temperature", "Turbine inlet temperature is used to finetune the engine configuration", _itt);
     _thruster = new Propeller(p);
 }
 
 // http://www.fzt.haw-hamburg.de/pers/Scholz/Airport2030/Airport2030_PUB_ICAS_12-09-23.pdf
 //
 // _power is in kW for the following computations:
-// _oapr = overall  pressure ratio at static sea level 
+// _oapr = overall  pressure ratio at static sea level
 // Ttet = turbine  entry  temperature at static sea level in Kelvin
 //
 // mass_eng = 0.246f * _power;
 // eng_length = 0.1068f * powf(_power, 0.4094f);
 // eng_diameter = 0.1159f * powf(_power, 0.2483f);
 // psfc = 2.56*10e-4 - logf(_power * _oapr * Ttet)*10e-5;
-
 std::string TurbopropEngine::engine()
 {
     Propeller *propeller = (Propeller*)_thruster;
+    bool& convert = _aircraft->_metric;
     std::stringstream file;
 
     _thruster->set_thruster(_max_rpm);
@@ -779,13 +843,13 @@ std::string TurbopropEngine::engine()
     file << std::endl;
     file << "  Outputs:" << std::endl;
     file << "    psfc:                   " << std::setprecision(3) << psfc << std::setprecision(1) << " lbs/hr/hp" << std::endl;
-    file << "    engine weight:          " << (0.246f * _propulsion->_power * KG_TO_LBS) << " lbs" << std::endl;
-    file << "    engine length:          " << (0.1068f * powf(_propulsion->_power, 0.4094f) * METER_TO_FEET) << " ft" << std::endl;
-    file << "    engine diameter:        " << (0.1159f * powf(_propulsion->_power, 0.2483f) * METER_TO_FEET) << " ft" <<std::endl;
+    file << "    engine weight:          " << Param::get_nice(0.246f * _propulsion->_power * KG_TO_LBS, WEIGHT, convert) << std::endl;
+    file << "    engine length:          " << Param::get_nice(0.1068f * powf(_propulsion->_power, 0.4094f) * METER_TO_FEET, LENGTH, convert) << std::endl;
+    file << "    engine diameter:        " << Param::get_nice(0.1159f * powf(_propulsion->_power, 0.2483f) * METER_TO_FEET, LENGTH, convert) << std::endl;
     file << "-->" << std::endl;
     file <<std::endl;
 file << "<turboprop_engine name=\"" << _propulsion->_engine_name << "\">" << std::endl;
-    file << "  <milthrust unit=\"LBS\">       " << thrust << "   </milthrust>" << std::endl;
+    file << "  <milthrust unit=\"" << Param::get_unit(true, WEIGHT, convert) << "\">       " << Param::get(thrust, WEIGHT, convert) << "   </milthrust>" << std::endl;
     file << "  <idlen1>                       60.0   </idlen1>" << std::endl;
     file << "  <maxn1>                       100.0   </maxn1>" << std::endl;
     file << "  <maxpower unit=\"HP\">         " << std::setw(6) << _propulsion->_power << "   </maxpower>" << std::endl;
@@ -871,7 +935,8 @@ file << "<turboprop_engine name=\"" << _propulsion->_engine_name << "\">" << std
 RocketEngine::RocketEngine(Aeromatic *a, Propulsion *p) : Engine(a, p)
 {
     _description.push_back("Rocket Engine");
-    _inputs.push_back(new Param("Engine thrust", "Providing fairly acurate engine thrust is critical for a good configuration", _propulsion->_power, _aircraft->_metric, THRUST));
+    _inputs_order.push_back("rocketThrust");
+    _inputs["rocketThrust"] = new Param("Engine thrust", "Providing fairly acurate engine thrust is critical for a good configuration", _propulsion->_power, _aircraft->_metric, THRUST);
     _thruster = new Nozzle(p);
 }
 
@@ -907,12 +972,30 @@ std::string RocketEngine::engine()
     return file.str();
 }
 
+std::string RocketEngine::json()
+{
+    std::stringstream file;
+
+    file.precision(1);
+    file.flags(std::ios::left);
+    file << std::fixed << std::showpoint;
+
+    float max_thrust = _propulsion->_power;
+
+    std::string param  = "    \"FT_max\"";
+    file << std::setw(14) << param << ": " << max_thrust;
+
+    return file.str();
+}
+
 
 ElectricEngine::ElectricEngine(Aeromatic *a, Propulsion *p) : Engine(a, p)
 {
     _description.push_back("Electric Engine");
-    _inputs.push_back(new Param("Engine power", "Providing fairly acurate engine power is critical for a good configuration", _propulsion->_power, _aircraft->_metric, POWER));
-    _inputs.push_back(new Param("Maximum engine rpm", "The maximum rpm is used to calculate the propeller power and thrust tables", _max_rpm));
+    _inputs_order.push_back("electricPower");
+    _inputs["electricPower"] = new Param("Engine power", "Providing fairly acurate engine power is critical for a good configuration", _propulsion->_power, _aircraft->_metric, POWER);
+    _inputs_order.push_back("electricRPM");
+    _inputs["electricRPM"] = new Param("Maximum engine rpm", "The maximum rpm is used to calculate the propeller power and thrust tables", _max_rpm);
     _thruster = new Propeller(p);
 }
 
@@ -941,14 +1024,14 @@ std::string ElectricEngine::engine()
 
 float const TurbineEngine::_milthrust_t[8][8] =
 {
-   { 1.2600f, 1.0000f, 0.7400f, 0.5340f, 0.3720f, 0.2410f, 0.1490f, 0.0f, },
-   { 1.1710f, 0.9340f, 0.6970f, 0.5060f, 0.3550f, 0.2310f, 0.1430f, 0.0f, },
-   { 1.1500f, 0.9210f, 0.6920f, 0.5060f, 0.3570f, 0.2330f, 0.1450f, 0.0f, },
-   { 1.1810f, 0.9510f, 0.7210f, 0.5320f, 0.3780f, 0.2480f, 0.1540f, 0.0f, },
-   { 1.2580f, 1.0200f, 0.7820f, 0.5820f, 0.4170f, 0.2750f, 0.1700f, 0.0f, },
-   { 1.3690f, 1.1200f, 0.8710f, 0.6510f, 0.4750f, 0.3150f, 0.1950f, 0.0f, },
-   { 1.4850f, 1.2300f, 0.9750f, 0.7440f, 0.5450f, 0.3640f, 0.2250f, 0.0f, },
-   { 1.5941f, 1.3400f, 1.0860f, 0.8450f, 0.6280f, 0.4240f, 0.2630f, 0.0f, }
+   { 1.2600f, 1.0000f, 0.7400f, 0.5340f, 0.3720f, 0.2410f, 0.1490f, 0.058f },
+   { 1.1710f, 0.9340f, 0.6970f, 0.5060f, 0.3550f, 0.2310f, 0.1430f, 0.040f },
+   { 1.1500f, 0.9210f, 0.6920f, 0.5060f, 0.3570f, 0.2330f, 0.1450f, 0.043f },
+   { 1.1810f, 0.9510f, 0.7210f, 0.5320f, 0.3780f, 0.2480f, 0.1540f, 0.047f },
+   { 1.2580f, 1.0200f, 0.7820f, 0.5820f, 0.4170f, 0.2750f, 0.1700f, 0.053f },
+   { 1.3690f, 1.1200f, 0.8710f, 0.6510f, 0.4750f, 0.3150f, 0.1950f, 0.063f },
+   { 1.4850f, 1.2300f, 0.9750f, 0.7440f, 0.5450f, 0.3640f, 0.2250f, 0.074f },
+   { 1.5941f, 1.3400f, 1.0860f, 0.8450f, 0.6280f, 0.4240f, 0.2630f, 0.090f }
 };
 
 float const TurbopropEngine::_eng_pwr_t[6][13] =

@@ -7,21 +7,21 @@
  ------------- Copyright (C) 2000 -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -37,20 +37,14 @@ COMMENTS, REFERENCES,  and NOTES
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <iostream>
-#include <cstdlib>
-
 #include "FGFCSComponent.h"
-#include "input_output/FGXMLElement.h"
-#include "math/FGPropertyValue.h"
 #include "models/FGFCS.h"
+#include "math/FGParameterValue.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGFCSComponent.cpp,v 1.42 2016/02/27 16:54:15 bcoconni Exp $");
-IDENT(IdHdr,ID_FCSCOMPONENT);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -58,17 +52,13 @@ CLASS IMPLEMENTATION
 
 FGFCSComponent::FGFCSComponent(FGFCS* _fcs, Element* element) : fcs(_fcs)
 {
-  Element *input_element,*init_element, *clip_el;
-  Input = Output = clipmin = clipmax = delay_time = 0.0;
-  treenode = 0;
+  Input = Output = delay_time = 0.0;
   delay = index = 0;
-  ClipMinPropertyNode = ClipMaxPropertyNode = 0;
-  clipMinSign = clipMaxSign = 1.0;
-  IsOutput   = clip = false;
-  string input,init, clip_string;
-  dt = fcs->GetDt();
+  ClipMin = ClipMax = new FGRealValue(0.0);
+  clip = cyclic_clip = false;
+  dt = fcs->GetChannelDeltaT();
 
-  PropertyManager = fcs->GetPropertyManager();
+  auto PropertyManager = fcs->GetPropertyManager();
   if        (element->GetName() == string("lag_filter")) {
     Type = "LAG_FILTER";
   } else if (element->GetName() == string("lead_lag_filter")) {
@@ -121,66 +111,46 @@ FGFCSComponent::FGFCSComponent(FGFCS* _fcs, Element* element) : fcs(_fcs)
 
   Name = element->GetAttributeValue("name");
 
-  init_element = element->FindElement("init");
+  Element *init_element = element->FindElement("init");
   while (init_element) {
-    init = init_element->GetDataLine();
-    if (init[0] == '-') {
-      InitSigns.push_back(-1.0);
-      init.erase(0,1);
-    } else {
-      InitSigns.push_back( 1.0);
-    }
-
-    if (PropertyManager->HasNode(init)) {
-      FGPropertyNode* node = PropertyManager->GetNode(init);
-      InitNodes.push_back(new FGPropertyValue( node ));
-    } else {
-      InitNodes.push_back(new FGPropertyValue( init,
-                                                PropertyManager ));
-    }
-    InitNames.push_back( init );
-
+    InitNodes.push_back(new FGPropertyValue(init_element->GetDataLine(),
+                                            PropertyManager, init_element));
     init_element = element->FindNextElement("init");
   }
-  
-  input_element = element->FindElement("input");
-  while (input_element) {
-    input = input_element->GetDataLine();
-    if (input[0] == '-') {
-      InputSigns.push_back(-1.0);
-      input.erase(0,1);
-    } else {
-      InputSigns.push_back( 1.0);
-    }
 
-    if (PropertyManager->HasNode(input)) {
-      FGPropertyNode* node = PropertyManager->GetNode(input);
-      InputNodes.push_back(new FGPropertyValue( node ));
-    } else {
-      InputNodes.push_back(new FGPropertyValue( input,
-                                                PropertyManager ));
-    }
-    InputNames.push_back( input );
+  Element *input_element = element->FindElement("input");
+  while (input_element) {
+    InputNodes.push_back(new FGPropertyValue(input_element->GetDataLine(),
+                                             PropertyManager, input_element));
 
     input_element = element->FindNextElement("input");
   }
 
   Element *out_elem = element->FindElement("output");
   while (out_elem) {
-    IsOutput = true;
     string output_node_name = out_elem->GetDataLine();
-    FGPropertyNode* OutputNode = PropertyManager->GetNode( output_node_name, true );
-    OutputNodes.push_back(OutputNode);
+    bool node_exists = PropertyManager->HasNode(output_node_name);
+    SGPropertyNode* OutputNode = PropertyManager->GetNode( output_node_name, true );
     if (!OutputNode) {
-      cerr << endl << "  Unable to process property: " << output_node_name << endl;
-      throw(string("Invalid output property name in flight control definition"));
+      XMLLogException err(fcs->GetExec()->GetLogger(), out_elem);
+      err << "  Unable to process property: " << output_node_name << "\n";
+      throw err;
     }
+    OutputNodes.push_back(OutputNode);
+    // If the node has just been created then it must be initialized to a
+    // sensible value since FGPropertyNode::GetNode() does not take care of
+    // that.  If the node was already existing, its current value is kept
+    // unchanged.
+    if (!node_exists)
+      OutputNode->setDoubleValue(Output);
     out_elem = element->FindNextElement("output");
   }
 
   Element* delay_elem = element->FindElement("delay");
   if ( delay_elem ) {
-    delay_time = delay_elem->GetDataAsNumber();
+    string delay_str = delay_elem->GetDataLine();
+    FGParameterValue delayParam(delay_str, PropertyManager, delay_elem);
+    delay_time = delayParam.GetValue();
     string delayType = delay_elem->GetAttributeValue("type");
     if (delayType.length() > 0) {
       if (delayType == "time") {
@@ -188,7 +158,8 @@ FGFCSComponent::FGFCSComponent(FGFCS* _fcs, Element* element) : fcs(_fcs)
       } else if (delayType == "frames") {
         delay = (unsigned int)delay_time;
       } else {
-        cerr << "Unallowed delay type" << endl;
+        FGXMLLogging log(fcs->GetExec()->GetLogger(), delay_elem, LogLevel::ERROR);
+        log << "Unallowed delay type\n";
       }
     } else {
       delay = (unsigned int)(delay_time / dt);
@@ -197,28 +168,30 @@ FGFCSComponent::FGFCSComponent(FGFCS* _fcs, Element* element) : fcs(_fcs)
     for (unsigned int i=0; i<delay; i++) output_array[i] = 0.0;
   }
 
-  clip_el = element->FindElement("clipto");
+  Element *clip_el = element->FindElement("clipto");
   if (clip_el) {
-    clip_string = clip_el->FindElementValue("min");
-    if (!is_number(clip_string)) { // it's a property
-      if (clip_string[0] == '-') {
-        clipMinSign = -1.0;
-        clip_string.erase(0,1);
-      }
-      ClipMinPropertyNode = PropertyManager->GetNode( clip_string );
-    } else {
-      clipmin = clip_el->FindElementValueAsNumber("min");
+    Element* el = clip_el->FindElement("min");
+    if (!el) {
+      FGXMLLogging log(fcs->GetExec()->GetLogger(), clip_el, LogLevel::ERROR);
+      log << "Element <min> is missing, <clipto> is ignored.\n";
+      return;
     }
-    clip_string = clip_el->FindElementValue("max");
-    if (!is_number(clip_string)) { // it's a property
-      if (clip_string[0] == '-') {
-        clipMaxSign = -1.0;
-        clip_string.erase(0,1);
-      }
-      ClipMaxPropertyNode = PropertyManager->GetNode( clip_string );
-    } else {
-      clipmax = clip_el->FindElementValueAsNumber("max");
+
+    ClipMin = new FGParameterValue(el, PropertyManager);
+
+    el = clip_el->FindElement("max");
+    if (!el) {
+      FGXMLLogging log(fcs->GetExec()->GetLogger(), clip_el, LogLevel::ERROR);
+      log << "Element <max> is missing, <clipto> is ignored.\n";
+      ClipMin = nullptr;
+      return;
     }
+
+    ClipMax = new FGParameterValue(el, PropertyManager);
+
+    if (clip_el->GetAttributeValue("type") == "cyclic")
+      cyclic_clip = true;
+
     clip = true;
   }
 
@@ -230,9 +203,6 @@ FGFCSComponent::FGFCSComponent(FGFCS* _fcs, Element* element) : fcs(_fcs)
 FGFCSComponent::~FGFCSComponent()
 {
   Debug(1);
-  for (unsigned int i=0; i<InputNodes.size(); i++) {
-    delete InputNodes[i];
-  }
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -240,32 +210,56 @@ FGFCSComponent::~FGFCSComponent()
 void FGFCSComponent::ResetPastStates(void)
 {
   index = 0;
-  for (unsigned int i = 0; i < output_array.size(); ++i)
-    output_array[i] = 0.0;
+  for (auto &elm: output_array)
+    elm = 0.0;
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+void FGFCSComponent::CheckInputNodes(size_t MinNodes, size_t MaxNodes, Element* el)
+{
+  size_t num = InputNodes.size();
+
+  if (num < MinNodes) {
+    XMLLogException err(fcs->GetExec()->GetLogger(), el);
+    err << "    Not enough <input> nodes are provided\n"
+        << "    Expecting " << MinNodes << " while " << num
+        << " are provided.\n";
+    throw err;
+  }
+
+  if (num > MaxNodes) {
+    FGXMLLogging log(fcs->GetExec()->GetLogger(), el, LogLevel::ERROR);
+    log << "    Too many <input> nodes are provided\n"
+        << "    Expecting " << MaxNodes << " while " << num
+        << " are provided.\n"
+        << "    The last " << num-MaxNodes << " input nodes will be ignored.\n";
+  }
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 void FGFCSComponent::SetOutput(void)
 {
-  for (unsigned int i=0; i<OutputNodes.size(); i++) OutputNodes[i]->setDoubleValue(Output);
-}
-
-//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-void FGFCSComponent::SetDtForFrameCount(int FrameCount)
-{
-  dt = fcs->GetDt() * FrameCount;
+  for (auto node: OutputNodes)
+    node->setDoubleValue(Output);
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 void FGFCSComponent::Delay(void)
 {
-  output_array[index] = Output;
-  if ((unsigned int)index == delay-1) index = 0;
-  else index++;
-  Output = output_array[index];
+  if (fcs->GetTrimStatus()) {
+    // Update the whole history while trim routines are executing.
+    // Don't want to model delays while calculating a trim solution.
+    std::fill(output_array.begin(), output_array.end(), Output);
+  }
+  else {
+    output_array[index] = Output;
+    if ((unsigned int)index == delay-1) index = 0;
+    else index++;
+    Output = output_array[index];
+  }
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -273,10 +267,27 @@ void FGFCSComponent::Delay(void)
 void FGFCSComponent::Clip(void)
 {
   if (clip) {
-    if (ClipMinPropertyNode != 0) clipmin = clipMinSign*ClipMinPropertyNode->getDoubleValue();
-    if (ClipMaxPropertyNode != 0) clipmax = clipMaxSign*ClipMaxPropertyNode->getDoubleValue();
-    if (Output > clipmax)      Output = clipmax;
-    else if (Output < clipmin) Output = clipmin;
+    double vmin = ClipMin->GetValue();
+    double vmax = ClipMax->GetValue();
+    double range = vmax - vmin;
+
+    if (range < 0.0) {
+      FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::ERROR);
+      log << "Trying to clip with a max value (" << fixed << vmax << ") from "
+          << ClipMax->GetName() << " lower than the min value (" << vmin
+          << ") from " << ClipMin->GetName() << ".\n"
+          << "Clipping is ignored.\n";
+      return;
+    }
+
+    if (cyclic_clip && range != 0.0) {
+      double value = Output - vmin;
+      Output = fmod(value, range) + vmin;
+      if (Output < vmin)
+        Output += range;
+    }
+    else
+      Output = Constrain(vmin, Output, vmax);
   }
 }
 
@@ -289,15 +300,30 @@ void FGFCSComponent::Clip(void)
 // properties in the FCS component name attribute. The old way is supported in
 // code at this time, but deprecated.
 
-void FGFCSComponent::bind(void)
+void FGFCSComponent::bind(Element* el, FGPropertyManager* PropertyManager)
 {
   string tmp;
-  if (Name.find("/") == string::npos) {
+  if (Name.find("/") == string::npos)
     tmp = "fcs/" + PropertyManager->mkPropertyName(Name, true);
-  } else {
+  else
     tmp = Name;
+
+  bool node_exists = PropertyManager->HasNode(tmp);
+  SGPropertyNode* node = PropertyManager->GetNode(tmp, true);
+
+  if (node) {
+    OutputNodes.push_back(node);
+    // If the node has just been created then it must be initialized to a
+    // sensible value since FGPropertyNode::GetNode() does not take care of
+    // that.  If the node was already existing, its current value is kept
+    // unchanged.
+    if (!node_exists)
+      node->setDoubleValue(Output);
   }
-  PropertyManager->Tie( tmp, this, &FGFCSComponent::GetOutput);
+  else {
+    FGXMLLogging log(fcs->GetExec()->GetLogger(), el, LogLevel::ERROR);
+    log << "Could not get or create property " << tmp << "\n";
+  }
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -308,7 +334,7 @@ void FGFCSComponent::bind(void)
 //       variable is not set, debug_lvl is set to 1 internally
 //    0: This requests JSBSim not to output any messages
 //       whatsoever.
-//    1: This value explicity requests the normal JSBSim
+//    1: This value explicitly requests the normal JSBSim
 //       startup messages
 //    2: This value asks for a message to be printed out when
 //       a class is instantiated
@@ -325,35 +351,22 @@ void FGFCSComponent::Debug(int from)
 
   if (debug_lvl & 1) { // Standard console startup message output
     if (from == 0) {
-      cout << endl << "    Loading Component \"" << Name
-                   << "\" of type: " << Type << endl;
+      FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
+      log << "\n    Loading Component \"" << Name << fixed
+          << "\" of type: " << Type << "\n";
 
       if (clip) {
-        string propsign;
-
-        if (ClipMinPropertyNode != 0L) {
-          if (clipMinSign < 0.0) propsign="-";
-          cout << "      Minimum limit: " << propsign << ClipMinPropertyNode->GetName() << endl;
-        } else {
-          cout << "      Minimum limit: " << clipmin << endl;
-        }
-
-        propsign="";
-
-        if (ClipMaxPropertyNode != 0L) {
-          if (clipMaxSign < 0.0) propsign="-";
-          cout << "      Maximum limit: " << propsign << ClipMaxPropertyNode->GetName() << endl;
-        } else {
-          cout << "      Maximum limit: " << clipmax << endl;
-        }
-      }  
-      if (delay > 0) cout <<"      Frame delay: " << delay
-                                   << " frames (" << delay*dt << " sec)" << endl;
+        log << "      Minimum limit: " << ClipMin->GetName() << "\n";
+        log << "      Maximum limit: " << ClipMax->GetName() << "\n";
+      }
+      if (delay > 0) log <<"      Frame delay: " << delay << fixed
+                         << setprecision(4) << " frames (" << delay*dt << " sec)\n";
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGFCSComponent" << endl;
-    if (from == 1) cout << "Destroyed:    FGFCSComponent" << endl;
+    FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGFCSComponent\n";
+    if (from == 1) log << "Destroyed:    FGFCSComponent\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -363,8 +376,6 @@ void FGFCSComponent::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

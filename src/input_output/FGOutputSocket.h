@@ -43,12 +43,6 @@ INCLUDES
 #include "input_output/FGfdmSocket.h"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_OUTPUTSOCKET "$Id: FGOutputSocket.h,v 1.3 2013/01/12 18:08:40 bcoconni Exp $"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
@@ -76,7 +70,7 @@ public:
   FGOutputSocket(FGFDMExec* fdmex);
 
   /** Destructor. */
-  ~FGOutputSocket();
+  ~FGOutputSocket() override;
 
   /** Overwrites the name identifier under which the output will be logged.
       This method is taken into account if it is called before
@@ -86,20 +80,20 @@ public:
                   hostname could be an ip, port a numerical value and
                   proto should be UDP or TCP (the default if omitted)
   */
-  virtual void SetOutputName(const std::string& name);
+  void SetOutputName(const std::string& name) override;
 
   /** Init the output directives from an XML file.
       @param element XML Element that is pointing to the output directives
   */
-  virtual bool Load(Element* el);
+  bool Load(Element* el) override;
 
   /** Initializes the instance. This method basically opens the socket to which
       outputs will be directed.
       @result true if the execution succeeded.
    */
-  bool InitModel(void);
+  bool InitModel(void) override;
   /// Generates the output.
-  void Print(void);
+  void Print(void) override;
 
   /** Outputs a status thru the socket. This method issues a message prepended
       by the string "<STATUS>" to the socket.
@@ -114,8 +108,8 @@ protected:
   unsigned int SockPort;
   FGfdmSocket::ProtocolType SockProtocol;
   FGfdmSocket* socket;
+  int precision;
 };
 }
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #endif
-

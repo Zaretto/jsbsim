@@ -42,12 +42,6 @@ INCLUDES
 #include "input_output/FGfdmSocket.h"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_INPUTSOCKET "$Id: FGInputSocket.h,v 1.1 2015/02/15 12:04:32 bcoconni Exp $"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
@@ -72,27 +66,29 @@ public:
   FGInputSocket(FGFDMExec* fdmex);
 
   /** Destructor. */
-  ~FGInputSocket();
+  ~FGInputSocket() override;
 
   /** Init the input directives from an XML file.
       @param element XML Element that is pointing to the input directives
   */
-  bool Load(Element* el);
+  bool Load(Element* el) override;
 
   /** Initializes the instance. This method basically opens the socket to which
       inputs will be directed.
       @result true if the execution succeeded.
    */
-  bool InitModel(void);
+  bool InitModel(void) override;
 
   /// Generates the input.
-  void Read(bool Holding);
+  void Read(bool Holding) override;
 
 protected:
 
   unsigned int SockPort;
   FGfdmSocket* socket;
+  FGfdmSocket::ProtocolType SockProtocol;
   std::string data;
+  bool BlockingInput;
 };
 }
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

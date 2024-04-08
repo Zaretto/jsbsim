@@ -18,20 +18,30 @@
 # this program; if not, see <http://www.gnu.org/licenses/>
 #
 
-import os
 import xml.etree.ElementTree as et
-from JSBSim_utils import JSBSimTestCase, CreateFDM, RunTest, CopyAircraftDef
+from JSBSim_utils import JSBSimTestCase, RunTest, CopyAircraftDef
+import fpectl
 
 
 class TestLGearSteer(JSBSimTestCase):
     def test_direct_steer(self):
-        fdm = CreateFDM(self.sandbox)
+        fdm = self.create_fdm()
         fdm.load_model('c172r')
-        aircraft_path = self.sandbox.path_to_jsbsim_file('aircraft')
-        fdm.load_ic(os.path.join(aircraft_path, 'c172r', 'reset00'), False)
+        fdm.load_ic('reset00', True)
         fdm.run_ic()
         self.assertAlmostEqual(fdm['fcs/steer-cmd-norm'], 0.0)
         self.assertAlmostEqual(fdm['fcs/steer-pos-deg'], 0.0)
+
+        # Should be part of a unit test in C++ ?
+        fpectl.turnon_sigfpe()
+
+        grndreact = fdm.get_ground_reactions()
+        for i in range(grndreact.get_num_gear_units()):
+            gear = grndreact.get_gear_unit(i)
+            self.assertEqual(gear.get_steer_norm(), 0.0)
+
+        fpectl.turnoff_sigfpe()
+
         fdm['fcs/steer-pos-deg'] = 5.0
         self.assertAlmostEqual(fdm['fcs/steer-pos-deg'], 5.0)
         fdm.run()
@@ -43,10 +53,9 @@ class TestLGearSteer(JSBSimTestCase):
         self.assertAlmostEqual(fdm['fcs/steer-pos-deg'], 10.0)
 
     def test_steer_with_fcs(self):
-        fdm = CreateFDM(self.sandbox)
+        fdm = self.create_fdm()
         fdm.load_model('L410')
-        aircraft_path = self.sandbox.path_to_jsbsim_file('aircraft')
-        fdm.load_ic(os.path.join(aircraft_path, 'L410', 'reset00'), False)
+        fdm.load_ic('reset00', True)
         fdm.run_ic()
         self.assertAlmostEqual(fdm['fcs/steer-cmd-norm'], 0.0)
         self.assertAlmostEqual(fdm['fcs/steer-pos-deg'], 0.0)
@@ -72,7 +81,7 @@ class TestLGearSteer(JSBSimTestCase):
         self.tree.write(self.sandbox('aircraft', self.aircraft_name,
                                      self.aircraft_name+'.xml'))
 
-        fdm = CreateFDM(self.sandbox)
+        fdm = self.create_fdm()
         fdm.set_aircraft_path('aircraft')
         fdm.load_script(self.script_path)
         fdm.run_ic()
@@ -105,7 +114,6 @@ class TestLGearSteer(JSBSimTestCase):
                          float(self.max_steer_tag.text))
         # self.assertEqual(fdm['fcs/steer-pos-deg'],
         #                  fdm['gear/unit/steering-angle-deg'])
-        del fdm
 
     def isSteered(self):
         fdm = self.steerType(True, False, False)
@@ -113,7 +121,6 @@ class TestLGearSteer(JSBSimTestCase):
         fdm.run()
         self.assertEqual(fdm['fcs/steer-pos-deg'],
                          0.5*float(self.max_steer_tag.text))
-        del fdm
 
     def test_steer_type(self):
         self.script_path = self.sandbox.path_to_jsbsim_file('scripts',
@@ -126,7 +133,6 @@ class TestLGearSteer(JSBSimTestCase):
         # Check the fixed type
         self.max_steer_tag.text = '0.0'
         fdm = self.steerType(False, False, False)
-        del fdm
 
         # Check the castered type
         self.max_steer_tag.text = '360.0'
@@ -138,7 +144,6 @@ class TestLGearSteer(JSBSimTestCase):
         fdm['fcs/steer-cmd-norm'] = 0.5
         fdm.run()
         self.assertAlmostEqual(fdm['fcs/steer-pos-deg'], 5.0)
-        del fdm
 
         bogey_tag = root.find('ground_reactions/contact//max_steer/..')
         castered_tag = et.SubElement(bogey_tag, 'castered')
@@ -159,7 +164,6 @@ class TestLGearSteer(JSBSimTestCase):
         castered_tag.text = '0.0'
         self.max_steer_tag.text = '0.0'
         fdm = self.steerType(False, False, False)
-        del fdm
 
         # Check the steered type
         self.max_steer_tag.text = '10.0'

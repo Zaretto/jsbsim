@@ -8,21 +8,21 @@
  ------------- Copyright (C) 2000  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -35,21 +35,17 @@ HISTORY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <sstream>
 #include <iomanip>
 
+#include "FGFDMExec.h"
 #include "FGGroundReactions.h"
-#include "FGLGear.h"
 #include "FGAccelerations.h"
-#include "input_output/FGPropertyManager.h"
 #include "input_output/FGXMLElement.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGGroundReactions.cpp,v 1.52 2016/05/16 18:19:57 bcoconni Exp $");
-IDENT(IdHdr,ID_GROUNDREACTIONS);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -69,16 +65,6 @@ FGGroundReactions::FGGroundReactions(FGFDMExec* fgex) :
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-FGGroundReactions::~FGGroundReactions(void)
-{
-  for (unsigned int i=0; i<lGear.size();i++) delete lGear[i];
-  lGear.clear();
-
-  Debug(1);
-}
-
-//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 bool FGGroundReactions::InitModel(void)
 {
   if (!FGModel::InitModel()) return false;
@@ -89,8 +75,8 @@ bool FGGroundReactions::InitModel(void)
 
   multipliers.clear();
 
-  for (unsigned int i=0; i<lGear.size(); i++)
-    lGear[i]->ResetToIC();
+  for (auto& gear: lGear)
+    gear->ResetToIC();
 
   return true;
 }
@@ -114,9 +100,9 @@ bool FGGroundReactions::Run(bool Holding)
   // The gear ::Run() method is called several times - once for each gear.
   // Perhaps there is some commonality for things which only need to be
   // calculated once.
-  for (unsigned int i=0; i<lGear.size(); i++) {
-    vForces  += lGear[i]->GetBodyForces(this);
-    vMoments += lGear[i]->GetMoments();
+  for (auto& gear:lGear) {
+    vForces  += gear->GetBodyForces();
+    vMoments += gear->GetMoments();
   }
 
   RunPostFunctions();
@@ -128,14 +114,11 @@ bool FGGroundReactions::Run(bool Holding)
 
 bool FGGroundReactions::GetWOW(void) const
 {
-  bool result = false;
-  for (unsigned int i=0; i<lGear.size(); i++) {
-    if (lGear[i]->IsBogey() && lGear[i]->GetWOW()) {
-      result = true;
-      break;
-    }
+  for (auto& gear:lGear) {
+    if (gear->IsBogey() && gear->GetWOW())
+      return true;
   }
-  return result;
+  return false;
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -143,8 +126,8 @@ bool FGGroundReactions::GetWOW(void) const
 void FGGroundReactions::SetDsCmd(double cmd)
 {
   DsCmd = cmd;
-  for (unsigned int i=0; i<lGear.size(); ++i)
-    lGear[i]->SetSteerCmd(cmd);
+  for (auto& gear:lGear)
+    gear->SetSteerCmd(cmd);
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -158,20 +141,16 @@ bool FGGroundReactions::Load(Element* document)
   Debug(2);
 
   // Perform base class Pre-Load
-  if (!FGModel::Load(document))
+  if (!FGModel::Upload(document, true))
     return false;
 
-  unsigned int numContacts = document->GetNumElements("contact");
-  lGear.resize(numContacts);
   Element* contact_element = document->FindElement("contact");
-  for (unsigned int idx=0; idx<numContacts; idx++) {
-    lGear[idx] = new FGLGear(contact_element, FDMExec, num++, in);
+  while (contact_element) {
+    lGear.push_back(make_shared<FGLGear>(contact_element, FDMExec, num++, in));
     contact_element = document->FindNextElement("contact");
   }
 
-  for (unsigned int i=0; i<lGear.size();i++) lGear[i]->bind();
-
-  PostLoad(document, PropertyManager);
+  PostLoad(document, FDMExec);
 
   return true;
 }
@@ -182,9 +161,9 @@ string FGGroundReactions::GetGroundReactionStrings(string delimeter) const
 {
   std::ostringstream buf;
 
-  for (unsigned int i=0;i<lGear.size();i++) {
-    if (lGear[i]->IsBogey()) {
-      string name = lGear[i]->GetName();
+  for (auto& gear:lGear) {
+    string name = gear->GetName();
+    if (gear->IsBogey()) {
       buf << name << " WOW" << delimeter
           << name << " stroke (ft)" << delimeter
           << name << " stroke velocity (ft/sec)" << delimeter
@@ -199,7 +178,6 @@ string FGGroundReactions::GetGroundReactionStrings(string delimeter) const
           << name << " wheel side velocity (ft/sec)" << delimeter
           << name << " wheel slip (deg)" << delimeter;
     } else {
-      string name = lGear[i]->GetName();
       buf << name << " WOW" << delimeter
           << name << " stroke (ft)" << delimeter
           << name << " stroke velocity (ft/sec)" << delimeter
@@ -223,9 +201,8 @@ string FGGroundReactions::GetGroundReactionValues(string delimeter) const
 {
   std::ostringstream buf;
 
-  for (unsigned int i=0;i<lGear.size();i++) {
-    if (lGear[i]->IsBogey()) {
-      FGLGear *gear = lGear[i];
+  for (auto& gear: lGear) {
+    if (gear->IsBogey()) {
       buf << (gear->GetWOW() ? "1" : "0") << delimeter
           << setprecision(5) << gear->GetCompLen() << delimeter
           << setprecision(6) << gear->GetCompVel() << delimeter
@@ -240,7 +217,6 @@ string FGGroundReactions::GetGroundReactionValues(string delimeter) const
           << gear->GetWheelSideVel() << delimeter
           << gear->GetWheelSlipAngle() << delimeter;
     } else {
-      FGLGear *gear = lGear[i];
       buf << (gear->GetWOW() ? "1" : "0") << delimeter
           << setprecision(5) << gear->GetCompLen() << delimeter
           << setprecision(6) << gear->GetCompVel() << delimeter
@@ -248,7 +224,7 @@ string FGGroundReactions::GetGroundReactionValues(string delimeter) const
     }
   }
 
-  FGAccelerations* Accelerations = FDMExec->GetAccelerations();
+  auto Accelerations = FDMExec->GetAccelerations();
 
   buf << Accelerations->GetGroundForces(eX) << delimeter
       << Accelerations->GetGroundForces(eY) << delimeter
@@ -264,8 +240,7 @@ string FGGroundReactions::GetGroundReactionValues(string delimeter) const
 
 void FGGroundReactions::bind(void)
 {
-  eSurfaceType = ctGROUND;
-  FGSurface::bind();
+  FGSurface::bind(PropertyManager.get());
 
   PropertyManager->Tie("gear/num-units", this, &FGGroundReactions::GetNumGearUnits);
   PropertyManager->Tie("gear/wow", this, &FGGroundReactions::GetWOW);
@@ -298,12 +273,14 @@ void FGGroundReactions::Debug(int from)
 
   if (debug_lvl & 1) { // Standard console startup message output
     if (from == 2) { // Loading
-      cout << endl << "  Ground Reactions: " << endl;
+      FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+      log << "\n  Ground Reactions: \n";
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGGroundReactions" << endl;
-    if (from == 1) cout << "Destroyed:    FGGroundReactions" << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGGroundReactions\n";
+    if (from == 1) log << "Destroyed:    FGGroundReactions\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -313,8 +290,6 @@ void FGGroundReactions::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

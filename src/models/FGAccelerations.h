@@ -7,21 +7,21 @@
  ------------- Copyright (C) 2011  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 HISTORY
 --------------------------------------------------------------------------------
@@ -38,18 +38,10 @@ SENTRY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <vector>
-
 #include "models/FGModel.h"
 #include "math/FGColumnVector3.h"
 #include "math/LagrangeMultiplier.h"
 #include "math/FGMatrix33.h"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_ACCELERATIONS "$Id: FGAccelerations.h,v 1.20 2016/05/22 10:28:23 bcoconni Exp $"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
@@ -65,8 +57,6 @@ CLASS DOCUMENTATION
 
     - Calculate the angular accelerations
     - Calculate the translational accelerations
-    - Calculate the angular rate
-    - Calculate the translational velocity
 
     This class is collecting all the forces and the moments acting on the body
     to calculate the corresponding accelerations according to Newton's second
@@ -96,7 +86,6 @@ CLASS DOCUMENTATION
          NASA SP-8024, May 1969
 
     @author Jon S. Berndt, Mathias Froehlich, Bertrand Coconnier
-    @version $Id: FGAccelerations.h,v 1.20 2016/05/22 10:28:23 bcoconni Exp $
   */
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -107,23 +96,15 @@ class FGAccelerations : public FGModel {
 public:
   /** Constructor.
       @param Executive a pointer to the parent executive object */
-  FGAccelerations(FGFDMExec* Executive);
+  explicit FGAccelerations(FGFDMExec* Executive);
 
   /// Destructor
   ~FGAccelerations();
 
-  /// These define the indices use to select the gravitation models.
-  enum eGravType {
-    /// Evaluate gravity using Newton's classical formula assuming the Earth is spherical
-    gtStandard,
-    /// Evaluate gravity using WGS84 formulas that take the Earth oblateness into account
-    gtWGS84
-  };
-
   /** Initializes the FGAccelerations class after instantiation and prior to first execution.
       The base class FGModel::InitModel is called first, initializing pointers to the
       other FGModel objects (and others).  */
-  bool InitModel(void);
+  bool InitModel(void) override;
 
   /** Runs the state propagation model; called by the Executive
       Can pass in a value indicating if the executive is directing the simulation to Hold.
@@ -132,7 +113,7 @@ public:
                      model, which may need to be active to listen on a socket for the
                      "Resume" command to be given.
       @return false if no error */
-  bool Run(bool Holding);
+  bool Run(bool Holding) override;
 
   /** Retrieves the body axis acceleration.
       Retrieves the computed body axis accelerations based on the
@@ -163,6 +144,7 @@ public:
       @return Body axis translational acceleration in ft/sec^2.
   */
   const FGColumnVector3& GetUVWidot(void) const { return vUVWidot; }
+  double GetUVWidot(int idx) const { return vUVWidot(idx); }
 
   /** Retrieves the body axis angular acceleration vector.
       Retrieves the body axis angular acceleration vector in rad/sec^2. The
@@ -193,6 +175,7 @@ public:
       @return The angular acceleration vector.
   */
   const FGColumnVector3& GetPQRidot(void) const {return vPQRidot;}
+  double GetPQRidot(int idx) const { return vPQRidot(idx); }
 
   /** Retrieves a body frame acceleration component.
       Retrieves a body frame acceleration component. The acceleration returned
@@ -221,9 +204,7 @@ public:
   */
   const FGColumnVector3& GetBodyAccel(void) const { return vBodyAccel; }
 
-  const FGColumnVector3& GetGravAccel(void) const {return vGravAccel; }
-
-  double GetGravAccelMagnitude(void) const { return vGravAccel.Magnitude(); }
+  double GetGravAccelMagnitude(void) const { return in.vGravAccel.Magnitude(); }
 
   /** Retrieves a component of the acceleration resulting from the applied forces.
       Retrieves a component of the ratio between the sum of all forces applied
@@ -321,8 +302,8 @@ public:
       @param idx the index of the forces component desired (1-based).
       @return The ground forces applied on the body.
   */
-  double GetWeight(int idx) const { return in.Mass * (in.Ti2b * vGravAccel)(idx); }
-  FGColumnVector3 GetWeight(void) const { return in.Mass * in.Ti2b * vGravAccel; }
+  double GetWeight(int idx) const { return in.Mass * (in.Tec2b * in.vGravAccel)(idx); }
+  FGColumnVector3 GetWeight(void) const { return in.Mass * in.Tec2b * in.vGravAccel; }
 
   /** Initializes the FGAccelerations class prior to a new execution.
       Initializes the class prior to a new execution when the input data stored
@@ -357,8 +338,8 @@ public:
     FGColumnVector3 Force;
     /// Forces generated by the ground normal reactions expressed in the body frame. Does not account for friction.
     FGColumnVector3 GroundForce;
-    /// Gravity intensity vector using WGS84 formulas (expressed in the ECEF frame).
-    FGColumnVector3 J2Grav;
+    /// Gravity intensity vector (expressed in the ECEF frame).
+    FGColumnVector3 vGravAccel;
     /// Angular velocities of the body with respect to the ECI frame (expressed in the body frame).
     FGColumnVector3 vPQRi;
     /// Angular velocities of the body with respect to the local frame (expressed in the body frame).
@@ -377,8 +358,6 @@ public:
     double DeltaT;
     /// Body mass
     double Mass;
-    /// Gravity intensity assuming the Earth is spherical
-    double GAccel;
     /// List of Lagrange multipliers set by FGLGear for friction forces calculations.
     std::vector<LagrangeMultiplier*> *MultipliersList;
   } in;
@@ -388,20 +367,18 @@ private:
   FGColumnVector3 vPQRdot, vPQRidot;
   FGColumnVector3 vUVWdot, vUVWidot;
   FGColumnVector3 vBodyAccel;
-  FGColumnVector3 vGravAccel;
   FGColumnVector3 vFrictionForces;
   FGColumnVector3 vFrictionMoments;
 
-  int gravType;
   bool gravTorque;
 
   void CalculatePQRdot(void);
   void CalculateUVWdot(void);
 
-  void ResolveFrictionForces(double dt);
+  void CalculateFrictionForces(double dt);
 
   void bind(void);
-  void Debug(int from);
+  void Debug(int from) override;
 };
 }
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

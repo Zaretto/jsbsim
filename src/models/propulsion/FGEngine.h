@@ -50,12 +50,6 @@ INCLUDES
 #include "math/FGColumnVector3.h"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_ENGINE "$Id: FGEngine.h,v 1.47 2015/09/27 10:16:57 bcoconni Exp $"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
@@ -77,17 +71,6 @@ CLASS DOCUMENTATION
     <h3>Configuration File Format:</h3>
 @code
         <engine file="{string}">
-            <location unit="{IN | M}">
-                <x> {number} </x>
-                <y> {number} </y>
-                <z> {number} </z>
-            </location>
-            <!-- optional orientation definition -->
-            <orient unit="{RAD | DEG}">
-                <roll>  {number} </roll>
-                <pitch> {number} </pitch>
-                <yaw> {number} </yaw>
-            </orient>
             <feed> {integer} </feed>
             ... optional more feed tank index numbers ... 
             <thruster file="{string}">
@@ -111,7 +94,6 @@ CLASS DOCUMENTATION
   documentation for engine and thruster classes.
 </pre>     
     @author Jon S. Berndt
-    @version $Id: FGEngine.h,v 1.47 2015/09/27 10:16:57 bcoconni Exp $
 */
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -138,7 +120,7 @@ public:
     double H_agl;
     FGColumnVector3 AeroUVW;
     FGColumnVector3 AeroPQR;
-    FGColumnVector3 PQR;
+    FGColumnVector3 PQRi;
     std::vector <double> ThrottleCmd;
     std::vector <double> MixtureCmd;
     std::vector <double> ThrottlePos;
@@ -149,7 +131,7 @@ public:
   };
 
   FGEngine(int engine_number, struct Inputs& input);
-  virtual ~FGEngine();
+  ~FGEngine() override;
 
   enum EngineType {etUnknown, etRocket, etPiston, etTurbine, etTurboprop, etElectric};
 
@@ -190,9 +172,6 @@ public:
 
   virtual double GetThrust(void) const;
     
-  /// Sets engine placement information
-  virtual void SetPlacement(const FGColumnVector3& location, const FGColumnVector3& orientation);
-
   /** The fuel need is calculated based on power levels and flow rate for that
       power level. It is also turned from a rate into an actual amount (pounds)
       by multiplying it by the delta T and the rate.
@@ -201,7 +180,7 @@ public:
 
   virtual double CalcOxidizerNeed(void) {return 0.0;}
 
-  virtual double GetPowerAvailable(void) {return 0.0;};
+  virtual double GetPowerAvailable(void) const {return 0.0;};
 
   virtual const FGColumnVector3& GetBodyForces(void);
   virtual const FGColumnVector3& GetMoments(void);
@@ -223,9 +202,6 @@ protected:
   std::string Name;
   const int   EngineNumber;
   EngineType Type;
-  double X, Y, Z;
-  double EnginePitch;
-  double EngineYaw;
   double SLFuelFlowMax;
   double MaxThrottle;
   double MinThrottle;
@@ -248,11 +224,10 @@ protected:
 
   std::vector <int> SourceTanks;
 
-  virtual bool Load(FGFDMExec *exec, Element *el);
+  bool Load(FGFDMExec *exec, Element *el);
   void Debug(int from);
 };
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #endif
-

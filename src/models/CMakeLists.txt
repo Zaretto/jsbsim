@@ -45,12 +45,9 @@ set(HEADERS FGAerodynamics.h
             FGAccelerations.h
             FGFCSChannel.h)
 
-add_full_path_name(MODELS_SRC "${SOURCES}")
-add_full_path_name(MODELS_HDR "${HEADERS}")
+add_library(Models OBJECT ${HEADERS} ${SOURCES})
+set_target_properties(Models PROPERTIES TARGET_DIRECTORY
+                             ${CMAKE_CURRENT_SOURCE_DIR})
+add_coverage(Models)
 
-propagate_source_files(MODELS ATMOSPHERE)
-propagate_source_files(MODELS FLIGHT_CONTROL)
-propagate_source_files(MODELS PROPULSION)
-
-install(FILES ${HEADERS} DESTINATION include/JSBSim/models)
-
+install(FILES ${HEADERS} DESTINATION include/JSBSim/models COMPONENT devel)

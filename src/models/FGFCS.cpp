@@ -1,6 +1,6 @@
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
- Module:       FGFCS.cpp 
+ Module:       FGFCS.cpp
  Author:       Jon Berndt
  Date started: 12/12/98
  Purpose:      Model the flight controls
@@ -9,21 +9,21 @@
  ------------- Copyright (C) 1999  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -37,15 +37,12 @@ HISTORY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <fstream>
-#include <sstream>
 #include <iomanip>
+#include <array>
 
 #include "FGFCS.h"
-#include "FGFDMExec.h"
-#include "FGGroundReactions.h"
-#include "input_output/FGXMLElement.h"
 #include "input_output/FGModelLoader.h"
+#include "input_output/FGLog.h"
 
 #include "models/flight_control/FGFilter.h"
 #include "models/flight_control/FGDeadBand.h"
@@ -55,7 +52,6 @@ INCLUDES
 #include "models/flight_control/FGSummer.h"
 #include "models/flight_control/FGKinemat.h"
 #include "models/flight_control/FGFCSFunction.h"
-#include "models/flight_control/FGSensor.h"
 #include "models/flight_control/FGActuator.h"
 #include "models/flight_control/FGAccelerometer.h"
 #include "models/flight_control/FGMagnetometer.h"
@@ -63,15 +59,13 @@ INCLUDES
 #include "models/flight_control/FGWaypoint.h"
 #include "models/flight_control/FGAngles.h"
 #include "models/flight_control/FGDistributor.h"
+#include "models/flight_control/FGLinearActuator.h"
 
 #include "FGFCSChannel.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGFCS.cpp,v 1.97 2016/05/18 08:06:57 ehofman Exp $");
-IDENT(IdHdr,ID_FCS);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -83,12 +77,11 @@ FGFCS::FGFCS(FGFDMExec* fdm) : FGModel(fdm), ChannelRate(1)
   Name = "FGFCS";
   systype = stFCS;
 
-  fdmex = fdm;
   DaCmd = DeCmd = DrCmd = DfCmd = DsbCmd = DspCmd = 0;
   PTrimCmd = YTrimCmd = RTrimCmd = 0.0;
   GearCmd = GearPos = 1; // default to gear down
   BrakePos.resize(FGLGear::bgNumBrakeGroups);
-  TailhookPos = WingFoldPos = 0.0; 
+  TailhookPos = WingFoldPos = 0.0;
 
   bind();
   for (i=0;i<NForms;i++) {
@@ -174,7 +167,10 @@ bool FGFCS::Run(bool Holding)
 
   // Execute system channels in order
   for (i=0; i<SystemChannels.size(); i++) {
-    if (debug_lvl & 4) cout << "    Executing System Channel: " << SystemChannels[i]->GetName() << endl;
+    if (debug_lvl & 4) {
+      FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+      log << "    Executing System Channel: " << SystemChannels[i]->GetName() << endl;
+    }
     ChannelRate = SystemChannels[i]->GetRate();
     SystemChannels[i]->Execute();
   }
@@ -322,7 +318,7 @@ void FGFCS::SetDspPos( int form , double pos )
 
 void FGFCS::SetThrottleCmd(int engineNum, double setting)
 {
-  if (engineNum < (int)ThrottlePos.size()) {
+  if (engineNum < (int)ThrottleCmd.size()) {
     if (engineNum < 0) {
       for (unsigned int ctr=0; ctr<ThrottleCmd.size(); ctr++)
         ThrottleCmd[ctr] = setting;
@@ -330,9 +326,10 @@ void FGFCS::SetThrottleCmd(int engineNum, double setting)
       ThrottleCmd[engineNum] = setting;
     }
   } else {
-    cerr << "Throttle " << engineNum << " does not exist! " << ThrottleCmd.size()
-         << " engines exist, but attempted throttle command is for engine "
-         << engineNum << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::ERROR);
+    log << "Throttle " << engineNum << " does not exist! " << ThrottleCmd.size()
+        << " engines exist, but attempted throttle command is for engine "
+        << engineNum << endl;
   }
 }
 
@@ -348,9 +345,10 @@ void FGFCS::SetThrottlePos(int engineNum, double setting)
       ThrottlePos[engineNum] = setting;
     }
   } else {
-    cerr << "Throttle " << engineNum << " does not exist! " << ThrottlePos.size()
-         << " engines exist, but attempted throttle position setting is for engine "
-         << engineNum << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::ERROR);
+    log << "Throttle " << engineNum << " does not exist! " << ThrottlePos.size()
+        << " engines exist, but attempted throttle position setting is for engine "
+        << engineNum << endl;
   }
 }
 
@@ -358,16 +356,18 @@ void FGFCS::SetThrottlePos(int engineNum, double setting)
 
 double FGFCS::GetThrottleCmd(int engineNum) const
 {
-  if (engineNum < (int)ThrottlePos.size()) {
+  if (engineNum < (int)ThrottleCmd.size()) {
     if (engineNum < 0) {
-       cerr << "Cannot get throttle value for ALL engines" << endl;
+      FGLogging log(FDMExec->GetLogger(), LogLevel::ERROR);
+      log << "Cannot get throttle value for ALL engines" << endl;
     } else {
       return ThrottleCmd[engineNum];
     }
   } else {
-    cerr << "Throttle " << engineNum << " does not exist! " << ThrottleCmd.size()
-         << " engines exist, but throttle setting for engine " << engineNum
-         << " is selected" << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::ERROR);
+    log << "Throttle " << engineNum << " does not exist! " << ThrottleCmd.size()
+        << " engines exist, but throttle setting for engine " << engineNum
+        << " is selected" << endl;
   }
   return 0.0;
 }
@@ -378,14 +378,16 @@ double FGFCS::GetThrottlePos(int engineNum) const
 {
   if (engineNum < (int)ThrottlePos.size()) {
     if (engineNum < 0) {
-       cerr << "Cannot get throttle value for ALL engines" << endl;
+      FGLogging log(FDMExec->GetLogger(), LogLevel::ERROR);
+      log << "Cannot get throttle value for ALL engines" << endl;
     } else {
       return ThrottlePos[engineNum];
     }
   } else {
-    cerr << "Throttle " << engineNum << " does not exist! " << ThrottlePos.size()
-         << " engines exist, but attempted throttle position setting is for engine "
-         << engineNum << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::ERROR);
+    log << "Throttle " << engineNum << " does not exist! " << ThrottlePos.size()
+        << " engines exist, but attempted throttle position setting is for engine "
+        << engineNum << endl;
   }
   return 0.0;
 }
@@ -394,7 +396,7 @@ double FGFCS::GetThrottlePos(int engineNum) const
 
 void FGFCS::SetMixtureCmd(int engineNum, double setting)
 {
-  if (engineNum < (int)ThrottlePos.size()) {
+  if (engineNum < (int)MixtureCmd.size()) {
     if (engineNum < 0) {
       for (unsigned int ctr=0; ctr<MixtureCmd.size(); ctr++)
         MixtureCmd[ctr] = setting;
@@ -408,7 +410,7 @@ void FGFCS::SetMixtureCmd(int engineNum, double setting)
 
 void FGFCS::SetMixturePos(int engineNum, double setting)
 {
-  if (engineNum < (int)ThrottlePos.size()) {
+  if (engineNum < (int)MixturePos.size()) {
     if (engineNum < 0) {
       for (unsigned int ctr=0; ctr<MixtureCmd.size(); ctr++)
         MixturePos[ctr] = MixtureCmd[ctr];
@@ -422,7 +424,7 @@ void FGFCS::SetMixturePos(int engineNum, double setting)
 
 void FGFCS::SetPropAdvanceCmd(int engineNum, double setting)
 {
-  if (engineNum < (int)ThrottlePos.size()) {
+  if (engineNum < (int)PropAdvanceCmd.size()) {
     if (engineNum < 0) {
       for (unsigned int ctr=0; ctr<PropAdvanceCmd.size(); ctr++)
         PropAdvanceCmd[ctr] = setting;
@@ -436,7 +438,7 @@ void FGFCS::SetPropAdvanceCmd(int engineNum, double setting)
 
 void FGFCS::SetPropAdvance(int engineNum, double setting)
 {
-  if (engineNum < (int)ThrottlePos.size()) {
+  if (engineNum < (int)PropAdvance.size()) {
     if (engineNum < 0) {
       for (unsigned int ctr=0; ctr<PropAdvanceCmd.size(); ctr++)
         PropAdvance[ctr] = PropAdvanceCmd[ctr];
@@ -450,7 +452,7 @@ void FGFCS::SetPropAdvance(int engineNum, double setting)
 
 void FGFCS::SetFeatherCmd(int engineNum, bool setting)
 {
-  if (engineNum < (int)ThrottlePos.size()) {
+  if (engineNum < (int)PropFeatherCmd.size()) {
     if (engineNum < 0) {
       for (unsigned int ctr=0; ctr<PropFeatherCmd.size(); ctr++)
         PropFeatherCmd[ctr] = setting;
@@ -464,7 +466,7 @@ void FGFCS::SetFeatherCmd(int engineNum, bool setting)
 
 void FGFCS::SetPropFeather(int engineNum, bool setting)
 {
-  if (engineNum < (int)ThrottlePos.size()) {
+  if (engineNum < (int)PropFeather.size()) {
     if (engineNum < 0) {
       for (unsigned int ctr=0; ctr<PropFeatherCmd.size(); ctr++)
         PropFeather[ctr] = PropFeatherCmd[ctr];
@@ -490,7 +492,7 @@ bool FGFCS::Load(Element* document)
   }
 
   // Load interface properties from document
-  if (!FGModel::Load(document))
+  if (!FGModel::Upload(document, true))
     return false;
 
   Name += document->GetAttributeValue("name");
@@ -498,46 +500,49 @@ bool FGFCS::Load(Element* document)
   Debug(2);
 
   Element* channel_element = document->FindElement("channel");
-  
+
   while (channel_element) {
-  
+
     FGFCSChannel* newChannel = 0;
 
     string sOnOffProperty = channel_element->GetAttributeValue("execute");
     string sChannelName = channel_element->GetAttributeValue("name");
-    
-    int Rate = 0;
+
     if (!channel_element->GetAttributeValue("execrate").empty())
-      Rate = channel_element->GetAttributeValueAsNumber("execrate");
+      ChannelRate = channel_element->GetAttributeValueAsNumber("execrate");
+    else
+      ChannelRate = 1;
 
     if (sOnOffProperty.length() > 0) {
-      FGPropertyNode* OnOffPropertyNode = PropertyManager->GetNode(sOnOffProperty);
-      if (OnOffPropertyNode == 0) {
-        cerr << channel_element->ReadFrom() << highint << fgred
-             << "The On/Off property, " << sOnOffProperty << " specified for channel "
-             << channel_element->GetAttributeValue("name") << " is undefined or not "
-             << "understood. The simulation will abort" << reset << endl;
-        throw("Bad system definition");
+      SGPropertyNode* OnOffPropertyNode = PropertyManager->GetNode(sOnOffProperty);
+      if (OnOffPropertyNode == nullptr) {
+        XMLLogException err(FDMExec->GetLogger(), channel_element);
+        err << LogFormat::BOLD << LogFormat::RED
+            << "The On/Off property, " << sOnOffProperty << " specified for channel "
+            << channel_element->GetAttributeValue("name") << " is undefined or not "
+            << "understood. The simulation will abort" << LogFormat::RESET << endl;
+        throw err;
       } else
-        newChannel = new FGFCSChannel(this, sChannelName, Rate,
+        newChannel = new FGFCSChannel(this, sChannelName, ChannelRate,
                                       OnOffPropertyNode);
     } else
-      newChannel = new FGFCSChannel(this, sChannelName, Rate);
+      newChannel = new FGFCSChannel(this, sChannelName, ChannelRate);
 
     SystemChannels.push_back(newChannel);
 
-    if (debug_lvl > 0)
-      cout << endl << highint << fgblue << "    Channel " 
-         << normint << channel_element->GetAttributeValue("name") << reset << endl;
-  
+    if (debug_lvl > 0) {
+      FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+      log << endl << LogFormat::BOLD << LogFormat::BLUE << "    Channel "
+          << LogFormat::NORMAL << channel_element->GetAttributeValue("name") << LogFormat::RESET << endl;
+    }
+
     Element* component_element = channel_element->GetElement();
     while (component_element) {
       try {
         if ((component_element->GetName() == string("lag_filter")) ||
             (component_element->GetName() == string("lead_lag_filter")) ||
             (component_element->GetName() == string("washout_filter")) ||
-            (component_element->GetName() == string("second_order_filter")) ||
-            (component_element->GetName() == string("integrator")) )
+            (component_element->GetName() == string("second_order_filter")) )
         {
           newChannel->Add(new FGFilter(this, component_element));
         } else if ((component_element->GetName() == string("pure_gain")) ||
@@ -557,6 +562,19 @@ bool FGFCS::Load(Element* document)
           newChannel->Add(new FGFCSFunction(this, component_element));
         } else if (component_element->GetName() == string("pid")) {
           newChannel->Add(new FGPID(this, component_element));
+        } else if (component_element->GetName() == string("integrator")) {
+          // <integrator> is equivalent to <pid type="trap">
+          Element* c1_el = component_element->FindElement("c1");
+          if (!c1_el) {
+            XMLLogException err(FDMExec->GetLogger(), component_element);
+            err << "INTEGRATOR component " << component_element->GetAttributeValue("name")
+                << " does not provide the parameter <c1>" << endl;
+            throw err;
+          }
+          c1_el->ChangeName("ki");
+          if (!c1_el->HasAttribute("type"))
+            c1_el->AddAttribute("type", "trap");
+          newChannel->Add(new FGPID(this, component_element));
         } else if (component_element->GetName() == string("actuator")) {
           newChannel->Add(new FGActuator(this, component_element));
         } else if (component_element->GetName() == string("sensor")) {
@@ -575,12 +593,16 @@ bool FGFCS::Load(Element* document)
           newChannel->Add(new FGAngles(this, component_element));
         } else if (component_element->GetName() == string("distributor")) {
           newChannel->Add(new FGDistributor(this, component_element));
+        } else if (component_element->GetName() == string("linear_actuator")) {
+          newChannel->Add(new FGLinearActuator(this, component_element));
         } else {
-          cerr << "Unknown FCS component: " << component_element->GetName() << endl;
+          FGXMLLogging log(FDMExec->GetLogger(), component_element, LogLevel::ERROR);
+          log << "Unknown FCS component: " << component_element->GetName() << endl;
         }
       } catch(string& s) {
-        cerr << highint << fgred << endl << "  " << s << endl;
-        cerr << reset << endl;
+        FGXMLLogging log(FDMExec->GetLogger(), component_element, LogLevel::ERROR);
+        log << LogFormat::BOLD << LogFormat::RED << endl << "  " << s << endl;
+        log << LogFormat::RESET << endl;
         return false;
       }
       component_element = channel_element->GetNextElement();
@@ -588,7 +610,7 @@ bool FGFCS::Load(Element* document)
     channel_element = document->FindNextElement("channel");
   }
 
-  PostLoad(document, PropertyManager);
+  PostLoad(document, FDMExec);
 
   return true;
 }
@@ -602,16 +624,24 @@ double FGFCS::GetBrake(FGLGear::BrakeGroup bg)
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-string FGFCS::FindFullPathName(const string& sysfilename) const
+SGPath FGFCS::FindFullPathName(const SGPath& path) const
 {
-  string name = FGModel::FindFullPathName(sysfilename);
+  SGPath name = FGModel::FindFullPathName(path);
+  if (systype != stSystem || !name.isNull()) return name;
 
-  if (systype != stSystem || !name.empty()) return name;
+#ifdef _WIN32
+  const array<string, 1> dir_names = {"Systems"};
+#else
+  // Check alternative capitalization for case sensitive OSes.
+  const array<string, 2> dir_names = {"Systems", "systems"};
+#endif
 
-  name = CheckFullPathName(FDMExec->GetFullAircraftPath() + "/Systems", sysfilename);
-  if (!name.empty()) return name;
+  for(const string& dir_name: dir_names) {
+    name = CheckPathName(FDMExec->GetFullAircraftPath()/dir_name, path);
+    if (!name.isNull()) return name;
+  }
 
-  return CheckFullPathName(FDMExec->GetSystemsPath(), sysfilename);
+  return CheckPathName(FDMExec->GetSystemsPath(), path);
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -802,13 +832,15 @@ void FGFCS::Debug(int from)
   if (debug_lvl <= 0) return;
 
   if (debug_lvl & 1) { // Standard console startup message output
+    FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
     if (from == 2) { // Loader
-      cout << endl << "  " << Name << endl;
+      log << endl << "  " << Name << endl;
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGFCS" << endl;
-    if (from == 1) cout << "Destroyed:    FGFCS" << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGFCS" << endl;
+    if (from == 1) log << "Destroyed:    FGFCS" << endl;
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -818,8 +850,6 @@ void FGFCS::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

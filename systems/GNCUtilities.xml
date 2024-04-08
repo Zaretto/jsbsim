@@ -45,14 +45,14 @@
     <waypoint_heading name="guidance/wp-heading-rad" unit="RAD">
       <target_latitude unit="RAD">  guidance/target_wp_latitude_rad </target_latitude>
       <target_longitude unit="RAD"> guidance/target_wp_longitude_rad </target_longitude>
-      <source_latitude unit="RAD">  position/lat-gc-rad </source_latitude>
+      <source_latitude unit="RAD">  position/lat-geod-rad </source_latitude>
       <source_longitude unit="RAD"> position/long-gc-rad </source_longitude>
     </waypoint_heading>
 
     <waypoint_distance name="guidance/wp-distance" unit="FT">
       <target_latitude unit="RAD">  guidance/target_wp_latitude_rad </target_latitude>
       <target_longitude unit="RAD"> guidance/target_wp_longitude_rad </target_longitude>
-      <source_latitude unit="RAD">  position/lat-gc-rad </source_latitude>
+      <source_latitude unit="RAD">  position/lat-geod-rad </source_latitude>
       <source_longitude unit="RAD"> position/long-gc-rad </source_longitude>
     </waypoint_distance>
 
@@ -74,7 +74,7 @@
     <switch name="guidance/selected_target_heading">
       <default value="guidance/wp-heading-rad"/>
       <test value="guidance/specified-heading-rad">
-        guidance/heading-selector-switch eq &specifiedHeading;
+        guidance/heading-selector-switch eq 1
       </test>
     </switch>
 

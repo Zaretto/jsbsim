@@ -6,24 +6,24 @@
  Purpose:      Manages the External Forces
  Called by:    FGAircraft
 
- ------------- Copyright (C) 2006  David P. Culp (daveculp@cox.net) -------------
+ ------------- Copyright (C) 2006  David P. Culp (daveculp@cox.net) ------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -32,30 +32,19 @@ HISTORY
 --------------------------------------------------------------------------------
 17/11/06   DC   Created
 
-/%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+/%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <iostream>
-#include <string>
-
+#include "FGFDMExec.h"
+#include "FGExternalForce.h"
 #include "FGExternalReactions.h"
 #include "input_output/FGXMLElement.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-GLOBAL DATA
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-IDENT(IdSrc,"$Id: FGExternalReactions.cpp,v 1.21 2015/01/31 14:56:21 bcoconni Exp $");
-IDENT(IdHdr,ID_EXTERNALREACTIONS);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -63,8 +52,6 @@ CLASS IMPLEMENTATION
 
 FGExternalReactions::FGExternalReactions(FGFDMExec* fdmex) : FGModel(fdmex)
 {
-  NoneDefined = true;
-
   Debug(0);
 }
 
@@ -73,25 +60,32 @@ FGExternalReactions::FGExternalReactions(FGFDMExec* fdmex) : FGModel(fdmex)
 bool FGExternalReactions::Load(Element* el)
 {
   // Call the base class Load() function to load interface properties.
-  if (!FGModel::Load(el))
+  if (!FGModel::Upload(el, true))
     return false;
 
   Debug(2);
 
   // Parse force elements
 
-  int index=0;
   Element* force_element = el->FindElement("force");
   while (force_element) {
-    Forces.push_back( new FGExternalForce(FDMExec, force_element, index) );
-    NoneDefined = false;
-    index++; 
+    Forces.push_back(new FGExternalForce(FDMExec));
+    Forces.back()->setForce(force_element);
     force_element = el->FindNextElement("force");
   }
 
-  PostLoad(el, PropertyManager);
+  // Parse moment elements
 
-  if (!NoneDefined) bind();
+  Element* moment_element = el->FindElement("moment");
+  while (moment_element) {
+    Forces.push_back(new FGExternalForce(FDMExec));
+    Forces.back()->setMoment(moment_element);
+    moment_element = el->FindNextElement("moment");
+  }
+
+  PostLoad(el, FDMExec);
+
+  if (!Forces.empty()) bind();
 
   return true;
 }
@@ -101,7 +95,6 @@ bool FGExternalReactions::Load(Element* el)
 FGExternalReactions::~FGExternalReactions()
 {
   for (unsigned int i=0; i<Forces.size(); i++) delete Forces[i];
-  Forces.clear();
 
   Debug(1);
 }
@@ -124,7 +117,7 @@ bool FGExternalReactions::Run(bool Holding)
 {
   if (FGModel::Run(Holding)) return true;
   if (Holding) return false; // if paused don't execute
-  if (NoneDefined) return true;
+  if (Forces.empty()) return true;
 
   RunPreFunctions();
 
@@ -145,13 +138,12 @@ bool FGExternalReactions::Run(bool Holding)
 
 void FGExternalReactions::bind(void)
 {
-  typedef double (FGExternalReactions::*PMF)(int) const;
-  PropertyManager->Tie("moments/l-external-lbsft", this, eL, (PMF)&FGExternalReactions::GetMoments);
-  PropertyManager->Tie("moments/m-external-lbsft", this, eM, (PMF)&FGExternalReactions::GetMoments);
-  PropertyManager->Tie("moments/n-external-lbsft", this, eN, (PMF)&FGExternalReactions::GetMoments);
-  PropertyManager->Tie("forces/fbx-external-lbs", this, eX, (PMF)&FGExternalReactions::GetForces);
-  PropertyManager->Tie("forces/fby-external-lbs", this, eY, (PMF)&FGExternalReactions::GetForces);
-  PropertyManager->Tie("forces/fbz-external-lbs", this, eZ, (PMF)&FGExternalReactions::GetForces);
+  PropertyManager->Tie("moments/l-external-lbsft", this, eL, &FGExternalReactions::GetMoments);
+  PropertyManager->Tie("moments/m-external-lbsft", this, eM, &FGExternalReactions::GetMoments);
+  PropertyManager->Tie("moments/n-external-lbsft", this, eN, &FGExternalReactions::GetMoments);
+  PropertyManager->Tie("forces/fbx-external-lbs", this, eX, &FGExternalReactions::GetForces);
+  PropertyManager->Tie("forces/fby-external-lbs", this, eY, &FGExternalReactions::GetForces);
+  PropertyManager->Tie("forces/fbz-external-lbs", this, eZ, &FGExternalReactions::GetForces);
 }
 
 
@@ -182,12 +174,14 @@ void FGExternalReactions::Debug(int from)
     if (from == 0) { // Constructor - loading and initialization
     }
     if (from == 2) { // Loading
-      cout << endl << "  External Reactions: " << endl;
+      FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+      log << "\n  External Reactions: \n";
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGExternalReactions" << endl;
-    if (from == 1) cout << "Destroyed:    FGExternalReactions" << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGExternalReactions\n";
+    if (from == 1) log << "Destroyed:    FGExternalReactions\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -197,11 +191,8 @@ void FGExternalReactions::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }
 
 } // namespace JSBSim
-

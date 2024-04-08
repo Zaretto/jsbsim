@@ -14,7 +14,8 @@ set(SOURCES FGDeadBand.cpp
             FGMagnetometer.cpp
             FGAngles.cpp
             FGWaypoint.cpp
-            FGDistributor.cpp)
+            FGDistributor.cpp
+            FGLinearActuator.cpp)
 
 set(HEADERS FGDeadBand.h
             FGFCSComponent.h
@@ -33,10 +34,13 @@ set(HEADERS FGDeadBand.h
             FGSensorOrientation.h
             FGAngles.h
             FGWaypoint.h
-            FGDistributor.h)
+            FGDistributor.h
+            FGLinearActuator.h)
 
-add_full_path_name(FLIGHT_CONTROL_SRC "${SOURCES}")
-add_full_path_name(FLIGHT_CONTROL_HDR "${HEADERS}")
+add_library(FlightControl OBJECT ${HEADERS} ${SOURCES})
+set_target_properties(FlightControl PROPERTIES TARGET_DIRECTORY
+                                    ${CMAKE_CURRENT_SOURCE_DIR})
+add_coverage(FlightControl)
 
-install(FILES ${HEADERS} DESTINATION include/JSBSim/models/flight_control)
-
+install(FILES ${HEADERS} DESTINATION include/JSBSim/models/flight_control
+                         COMPONENT devel)

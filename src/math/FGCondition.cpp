@@ -7,21 +7,21 @@
  -------------- Copyright (C) 2003 Jon S. Berndt (jon@jsbsim.org) --------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 HISTORY
 --------------------------------------------------------------------------------
@@ -34,64 +34,65 @@ COMMENTS, REFERENCES,  and NOTES
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
+#include <iostream>
+#include <cstdlib>
+#include <stdexcept>
+#include <assert.h>
+#include <array>
+#include <utility>
+
 #include "FGCondition.h"
 #include "FGPropertyValue.h"
 #include "input_output/FGXMLElement.h"
 #include "input_output/FGPropertyManager.h"
-#include <iostream>
-#include <cstdlib>
+#include "FGParameterValue.h"
 
 using namespace std;
 
 namespace JSBSim {
 
-IDENT(IdSrc,"$Id: FGCondition.cpp,v 1.21 2015/02/27 20:36:47 bcoconni Exp $");
-IDENT(IdHdr,ID_CONDITION);
-
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-string FGCondition::indent = "        ";
-
 // This constructor is called when tests are inside an element
-FGCondition::FGCondition(Element* element, FGPropertyManager* PropertyManager) :
-  isGroup(true)
+FGCondition::FGCondition(Element* element, std::shared_ptr<FGPropertyManager> PropertyManager)
+  : Logic(elUndef), TestParam1(nullptr), TestParam2(nullptr),
+    Comparison(ecUndef)
 {
-  string property1, property2, logic;
-  Element* condition_element;
-
-  InitializeConditionals();
-
-  TestParam1  = TestParam2 = 0L;
-  TestValue   = 0.0;
-  Comparison  = ecUndef;
-  Logic       = elUndef;
-  conditions.clear();
-
-  logic = element->GetAttributeValue("logic");
+  string logic = element->GetAttributeValue("logic");
   if (!logic.empty()) {
     if (logic == "OR") Logic = eOR;
     else if (logic == "AND") Logic = eAND;
     else { // error
-      cerr << "Unrecognized LOGIC token " << logic << endl;
+      throw BaseException("FGCondition: unrecognized LOGIC token:'" + logic + "'");
     }
   } else {
     Logic = eAND; // default
   }
 
-  condition_element = element->GetElement();
-  if (condition_element != 0) {
-    while (condition_element) {
-      conditions.push_back(new FGCondition(condition_element, PropertyManager));
-      condition_element = element->GetNextElement();
-    }
-  } else {
-    for (unsigned int i=0; i<element->GetNumDataLines(); i++) {
-      string data = element->GetDataLine(i);
-      conditions.push_back(new FGCondition(data, PropertyManager));
-    }
+  assert(Logic != elUndef);
+
+  for (unsigned int i=0; i<element->GetNumDataLines(); i++) {
+    string data = element->GetDataLine(i);
+    conditions.push_back(make_shared<FGCondition>(data, PropertyManager, element));
   }
+
+  Element* condition_element = element->GetElement();
+  const string& elName = element->GetName();
+
+  while (condition_element) {
+    string tagName = condition_element->GetName();
+
+    if (tagName != elName) {
+      throw BaseException("FGCondition: unrecognized TAG:'" + tagName + "' in the condition statement.");
+    }
+
+    conditions.push_back(make_shared<FGCondition>(condition_element, PropertyManager));
+    condition_element = element->GetNextElement();
+  }
+
+  if (conditions.empty()) throw BaseException("Empty conditional");
 
   Debug(0);
 }
@@ -100,143 +101,110 @@ FGCondition::FGCondition(Element* element, FGPropertyManager* PropertyManager) :
 // This constructor is called when there are no nested test groups inside the
 // condition
 
-FGCondition::FGCondition(const string& test, FGPropertyManager* PropertyManager) :
-  isGroup(false)
+FGCondition::FGCondition(const string& test, std::shared_ptr<FGPropertyManager> PropertyManager,
+                         Element* el)
+  : Logic(elUndef), TestParam1(nullptr), TestParam2(nullptr),
+    Comparison(ecUndef)
 {
-  string property1, property2, compare_string;
-  vector <string> test_strings;
+  static constexpr array<pair<const char*, enum eComparison>, 18> mComparison {{
+    {"!=", eNE},
+    {"<",  eLT},
+    {"<=", eLE},
+    {"==", eEQ},
+    {">",  eGT},
+    {">=", eGE},
+    {"EQ", eEQ},
+    {"GE", eGE},
+    {"GT", eGT},
+    {"LE", eLE},
+    {"LT", eLT},
+    {"NE", eNE},
+    {"eq", eEQ},
+    {"ge", eGE},
+    {"gt", eGT},
+    {"le", eLE},
+    {"lt", eLT},
+    {"ne", eNE},
+  }};
 
-  InitializeConditionals();
+  vector<string> test_strings = split(test, ' ');
 
-  TestParam1  = TestParam2 = 0L;
-  TestValue   = 0.0;
-  Comparison  = ecUndef;
-  Logic       = elUndef;
-  conditions.clear();
-
-  test_strings = split(test, ' ');
   if (test_strings.size() == 3) {
-    property1 = test_strings[0];
+    TestParam1 = new FGPropertyValue(test_strings[0], PropertyManager, el);
     conditional = test_strings[1];
-    property2 = test_strings[2];
+    TestParam2 = new FGParameterValue(test_strings[2], PropertyManager, el);
   } else {
-    cerr << endl << "  Conditional test is invalid: \"" << test
-         << "\" has " << test_strings.size() << " elements in the "
-         << "test condition." << endl;
-    exit(-1);
+    ostringstream s;
+    s << "  Conditional test is invalid: \"" << test
+      << "\" has " << test_strings.size() << " elements in the "
+      << "test condition.\n";
+    throw BaseException(s.str());
   }
 
-  FGPropertyNode *node = PropertyManager->GetNode(property1, false);
-  if (node) {
-    TestParam1 = new FGPropertyValue(node);
-  } else {
-    TestParam1 = new FGPropertyValue(property1, PropertyManager);
-  }
-  Comparison = mComparison[conditional];
-  if (Comparison == ecUndef) {
-    throw("Comparison operator: \""+conditional+"\" does not exist.  Please check the conditional.");
-  }
-  if (is_number(property2)) {
-    TestValue = atof(property2.c_str());
-  } else {
-    node = PropertyManager->GetNode(property2, false);
-    if (node) {
-      TestParam2 = new FGPropertyValue(node);
-    } else {
-      TestParam2 = new FGPropertyValue(property2, PropertyManager);
+  assert(Comparison == ecUndef);
+  for(auto& elm: mComparison) {
+    if (conditional == elm.first) {
+      Comparison = elm.second;
+      break;
     }
   }
+
+  if (Comparison == ecUndef) {
+    throw BaseException("FGCondition: Comparison operator: \""+conditional
+          +"\" does not exist.  Please check the conditional.");
+  }
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-void FGCondition::InitializeConditionals(void)
-{
-  mComparison["EQ"] = eEQ;
-  mComparison["NE"] = eNE;
-  mComparison["GT"] = eGT;
-  mComparison["GE"] = eGE;
-  mComparison["LT"] = eLT;
-  mComparison["LE"] = eLE;
-  mComparison["eq"] = eEQ;
-  mComparison["ne"] = eNE;
-  mComparison["gt"] = eGT;
-  mComparison["ge"] = eGE;
-  mComparison["lt"] = eLT;
-  mComparison["le"] = eLE;
-  mComparison["=="] = eEQ;
-  mComparison["!="] = eNE;
-  mComparison[">"]  = eGT;
-  mComparison[">="] = eGE;
-  mComparison["<"]  = eLT;
-  mComparison["<="] = eLE;
-}
-
-//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-FGCondition::~FGCondition(void)
-{
-  delete TestParam1;
-  delete TestParam2;
-  for (unsigned int i=0; i<conditions.size(); i++) delete conditions[i];
-
-  Debug(1);
-}
-
-//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-bool FGCondition::Evaluate(void )
+bool FGCondition::Evaluate(void) const
 {
   bool pass = false;
-  double compareValue;
 
-  if (TestParam1 == 0L) {
+  if (!TestParam1) {
 
     if (Logic == eAND) {
 
       pass = true;
-      for (unsigned int i=0; i<conditions.size(); i++) {
-        if (!conditions[i]->Evaluate()) pass = false;
+      for (auto& cond: conditions) {
+        if (!cond->Evaluate()) pass = false;
       }
 
     } else { // Logic must be eOR
 
       pass = false;
-      for (unsigned int i=0; i<conditions.size(); i++) {
-        if (conditions[i]->Evaluate()) pass = true;
+      for (auto& cond: conditions) {
+        if (cond->Evaluate()) pass = true;
       }
 
     }
 
   } else {
-
-    if (TestParam2 != 0L) compareValue = TestParam2->getDoubleValue();
-    else compareValue = TestValue;
+    double value1 = TestParam1->GetValue();
+    double value2 = TestParam2->GetValue();
 
     switch (Comparison) {
-    case ecUndef:
-      cerr << "Undefined comparison operator." << endl;
-      break;
     case eEQ:
-      pass = TestParam1->getDoubleValue() == compareValue;
+      pass = value1 == value2;
       break;
     case eNE:
-      pass = TestParam1->getDoubleValue() != compareValue;
+      pass = value1 != value2;
       break;
     case eGT:
-      pass = TestParam1->getDoubleValue() > compareValue;
+      pass = value1 > value2;
       break;
     case eGE:
-      pass = TestParam1->getDoubleValue() >= compareValue;
+      pass = value1 >= value2;
       break;
     case eLT:
-      pass = TestParam1->getDoubleValue() < compareValue;
+      pass = value1 < value2;
       break;
     case eLE:
-      pass = TestParam1->getDoubleValue() <= compareValue;
+      pass = value1 <= value2;
       break;
     default:
-     cerr << "Unknown comparison operator." << endl;
+     assert(false);  // Should not be reached
+     break;
     }
   }
 
@@ -245,11 +213,11 @@ bool FGCondition::Evaluate(void )
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-void FGCondition::PrintCondition(string indent)
+void FGCondition::PrintCondition(string indent) const
 {
   string scratch;
 
-  if (isGroup) {
+  if (!conditions.empty()) {
 
     switch(Logic) {
     case (elUndef):
@@ -268,21 +236,16 @@ void FGCondition::PrintCondition(string indent)
     }
     cout << scratch << endl;
 
-    for (unsigned int i=0; i<conditions.size(); i++) {
-      conditions[i]->PrintCondition(indent + "  ");
+    for (auto& cond: conditions) {
+      cond->PrintCondition(indent + "  ");
       cout << endl;
     }
 
     cout << indent << "}";
 
   } else {
-    if (TestParam2 != 0L)
-      cout << indent << TestParam1->GetName() << " "
-           << conditional << " "
-           << TestParam2->GetName();
-    else
-      cout << indent << TestParam1->GetName() << " "
-                     << conditional << " " << TestValue;
+    cout << indent << TestParam1->GetName() << " " << conditional
+         << " " << TestParam2->GetName();
   }
 }
 
@@ -326,11 +289,8 @@ void FGCondition::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }
 
 } //namespace JSBSim
-

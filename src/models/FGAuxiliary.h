@@ -7,21 +7,21 @@
  ------------- Copyright (C) 1999  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 HISTORY
 --------------------------------------------------------------------------------
@@ -40,21 +40,15 @@ INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 #include "FGModel.h"
-#include "math/FGColumnVector3.h"
-#include "math/FGMatrix33.h"
 #include "math/FGLocation.h"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_AUXILIARY "$Id: FGAuxiliary.h,v 1.31 2015/09/20 20:53:13 bcoconni Exp $"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 namespace JSBSim {
+
+class FGInitialCondition;
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS DOCUMENTATION
@@ -99,34 +93,69 @@ CLASS DOCUMENTATION
     to the JSBSim vPQRdot vector, and the w parameter is equivalent to vPQR.
 
     @author Tony Peden, Jon Berndt
-    @version $Id: FGAuxiliary.h,v 1.31 2015/09/20 20:53:13 bcoconni Exp $
 */
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS DECLARATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-class FGAuxiliary : public FGModel {
+class JSBSIM_API FGAuxiliary : public FGModel {
 public:
   /** Constructor
       @param Executive a pointer to the parent executive object */
-  FGAuxiliary(FGFDMExec* Executive);
+  explicit FGAuxiliary(FGFDMExec* Executive);
 
   /// Destructor
   ~FGAuxiliary();
 
-  bool InitModel(void);
+  bool InitModel(void) override;
 
   /** Runs the Auxiliary routines; called by the Executive
-      Can pass in a value indicating if the executive is directing the simulation to Hold.
-      @param Holding if true, the executive has been directed to hold the sim from 
-                     advancing time. Some models may ignore this flag, such as the Input
-                     model, which may need to be active to listen on a socket for the
-                     "Resume" command to be given.
-      @return false if no error */
-  bool Run(bool Holding);
+      Can pass in a value indicating if the executive is directing the
+      simulation to Hold.
+      @param Holding if true, the executive has been directed to hold the sim
+                     from advancing time. Some models may ignore this flag, such
+                     as the Input model, which may need to be active to listen
+                     on a socket for the "Resume" command to be given.  @return
+                     false if no error */
+  bool Run(bool Holding) override;
 
 // GET functions
+
+  /** Compute the total pressure in front of the Pitot tube. It uses the
+  *   Rayleigh formula for supersonic speeds (See "Introduction to Aerodynamics
+  *   of a Compressible Fluid - H.W. Liepmann, A.E. Puckett - Wiley & sons
+  *   (1947)" §5.4 pp 75-80)
+  *   @param mach      The Mach number
+  *   @param pressure  Pressure in psf
+  *   @return The total pressure in front of the Pitot tube in psf */
+  double PitotTotalPressure(double mach, double pressure) const;
+
+  /** Compute the Mach number from the differential pressure (qc) and the
+  *   static pressure. Based on the formulas in the US Air Force Aircraft
+  *   Performance Flight Testing Manual (AFFTC-TIH-99-01).
+  *   @param qc        The differential/impact pressure
+  *   @param pressure  Pressure in psf
+  *   @return The Mach number */
+  double MachFromImpactPressure(double qc, double p) const;
+
+  /** Calculate the calibrated airspeed from the Mach number. Based on the
+  *   formulas in the US Air Force Aircraft Performance Flight Testing
+  *   Manual (AFFTC-TIH-99-01).
+  *   @param mach      The Mach number
+  *   @param pressure  Pressure in psf
+  *   @return The calibrated airspeed (CAS) in ft/s
+  * */
+  double VcalibratedFromMach(double mach, double pressure) const;
+
+  /** Calculate the Mach number from the calibrated airspeed.Based on the
+  *   formulas in the US Air Force Aircraft Performance Flight Testing
+  *   Manual (AFFTC-TIH-99-01).
+  *   @param vcas      The calibrated airspeed (CAS) in ft/s
+  *   @param pressure  Pressure in psf
+  *   @return The Mach number
+  * */
+  double MachFromVcalibrated(double vcas, double pressure) const;
 
   // Atmospheric parameters GET functions
   /** Returns Calibrated airspeed in feet/second.*/
@@ -138,9 +167,9 @@ public:
   /** Returns equivalent airspeed in knots. */
   double GetVequivalentKTS(void) const { return veas*fpstokts; }
   /** Returns the true airspeed in feet per second. */
-  double GetVtrueFPS() const { return vtrue; }
+  double GetVtrueFPS() const { return Vt; }
   /** Returns the true airspeed in knots. */
-  double GetVtrueKTS() const { return vtrue * fpstokts; }
+  double GetVtrueKTS() const { return Vt * fpstokts; }
 
   /** Returns the total pressure.
       Total pressure is freestream total pressure for
@@ -153,7 +182,8 @@ public:
     @code
     tat = in.Temperature*(1 + 0.2*Mach*Mach)
     @endcode
-    (where "in.Temperature" is standard temperature calculated by the atmosphere model) */
+    (where "in.Temperature" is standard temperature calculated by the atmosphere
+    model) */
 
   double GetTotalTemperature(void) const { return tat; }
   double GetTAT_C(void) const { return tatc; }
@@ -173,7 +203,6 @@ public:
   const FGColumnVector3& GetAeroUVW    (void) const { return vAeroUVW;     }
   const FGLocation&      GetLocationVRP(void) const { return vLocationVRP; }
 
-  double GethVRP(void) const { return vLocationVRP.GetAltitudeASL(); }
   double GetAeroUVW (int idx) const { return vAeroUVW(idx); }
   double Getalpha   (void) const { return alpha;      }
   double Getbeta    (void) const { return beta;       }
@@ -195,19 +224,20 @@ public:
   /** Calculates and returns the wind-to-body axis transformation matrix.
       @return a reference to the wind-to-body transformation matrix.
       */
-  const FGMatrix33& GetTw2b(void) { return mTw2b; }
+  const FGMatrix33& GetTw2b(void) const { return mTw2b; }
 
   /** Calculates and returns the body-to-wind axis transformation matrix.
       @return a reference to the wind-to-body transformation matrix.
       */
-  const FGMatrix33& GetTb2w(void) { return mTb2w; }
+  const FGMatrix33& GetTb2w(void) const { return mTb2w; }
 
   double Getqbar          (void) const { return qbar;       }
   double GetqbarUW        (void) const { return qbarUW;     }
   double GetqbarUV        (void) const { return qbarUV;     }
   double GetReynoldsNumber(void) const { return Re;         }
 
-  /** Gets the magnitude of total vehicle velocity including wind effects in feet per second. */
+  /** Gets the magnitude of total vehicle velocity including wind effects in
+      feet per second. */
   double GetVt            (void) const { return Vt;         }
 
   /** Gets the ground speed in feet per second.
@@ -222,11 +252,14 @@ public:
   /** The mach number calculated using the vehicle X axis velocity. */
   double GetMachU         (void) const { return MachU;      }
 
-  /** The vertical acceleration in g's of the aircraft center of gravity. */
-  double GetNz            (void) const { return Nz;         }
+  /** The longitudinal acceleration in g's of the aircraft center of gravity. */
+  double GetNx            (void) const { return Nx;         }
 
   /** The lateral acceleration in g's of the aircraft center of gravity. */
   double GetNy            (void) const { return Ny;         }
+
+  /** The vertical acceleration in g's of the aircraft center of gravity. */
+  double GetNz            (void) const { return Nz;         }
 
   const FGColumnVector3& GetNwcg(void) const { return vNwcg; }
 
@@ -236,35 +269,39 @@ public:
   double GetGamma(void)              const { return gamma;         }
   double GetGroundTrack(void)        const { return psigt;         }
 
-  double GetHeadWind(void) const;
-  double GetCrossWind(void) const;
-
-// Time routines, SET and GET functions, used by FGMSIS atmosphere
-
-  void SetDayOfYear    (int doy)    { day_of_year = doy;    }
-  void SetSecondsInDay (double sid) { seconds_in_day = sid; }
-
-  int    GetDayOfYear    (void) const { return day_of_year;    }
-  double GetSecondsInDay (void) const { return seconds_in_day; }
+  double GetGamma(int unit) const {
+    if (unit == inDegrees) return gamma*radtodeg;
+    else return BadUnits();
+  }
 
   double GetLongitudeRelativePosition (void) const;
   double GetLatitudeRelativePosition  (void) const;
   double GetDistanceRelativePosition  (void) const;
+
+  void SetInitialState(const FGInitialCondition*);
+
+  /** The North East Up (NEU) frame is a local tangential frame fixed in the ECEF
+      frame (i.e following the Earth's rotation).
+      The NEU frame's origin is fixed at the aircrat's initial lat, lon position
+      and at an altitude of 0 ft relative to the reference ellipsoid.
+      The NEU frame is a left-handed coordinate system, unlike the NED frame. So
+      beware of differences when computing cross products. */
+  double GetNEUPositionFromStart(int idx) const { return (GetNEUPositionFromStart())(idx); }
+  const FGColumnVector3& GetNEUPositionFromStart() const;
 
   void SetAeroPQR(const FGColumnVector3& tt) { vAeroPQR = tt; }
 
   struct Inputs {
     double Pressure;
     double Density;
-    double DensitySL;
-    double PressureSL;
     double Temperature;
+    double StdDaySLsoundspeed;
     double SoundSpeed;
     double KinematicViscosity;
     double DistanceAGL;
     double Wingspan;
     double Wingchord;
-    double SLGravity;
+    double StandardGravity;
     double Mass;
     FGMatrix33 Tl2b;
     FGMatrix33 Tb2l;
@@ -284,21 +321,16 @@ public:
     double SinTht;
     double CosPhi;
     double SinPhi;
-    double Psi;
     FGColumnVector3 TotalWindNED;
     FGColumnVector3 TurbPQR;
-    double WindPsi;
-    double Vwind;
-    double PitotAngle;
   } in;
 
-public:
-  double vcas, veas, vtrue;
+private:
+  double vcas, veas;
   double pt, tat, tatc; // Don't add a getter for pt!
 
   FGMatrix33 mTw2b;
   FGMatrix33 mTb2w;
-  FGMatrix33 mTw2p;
 
   FGColumnVector3 vPilotAccel;
   FGColumnVector3 vPilotAccelN;
@@ -306,23 +338,22 @@ public:
   FGColumnVector3 vNwcg;
   FGColumnVector3 vAeroPQR;
   FGColumnVector3 vAeroUVW;
-  FGColumnVector3 vEuler;
   FGColumnVector3 vEulerRates;
   FGColumnVector3 vMachUVW;
-  FGColumnVector3 vWindUVW;
-  FGColumnVector3 vPitotUVW;
   FGLocation vLocationVRP;
 
-  double Vt, Vground, Vpitot;
-  double Mach, MachU, MachPitot;
+  FGLocation NEUStartLocation;
+  mutable FGColumnVector3 vNEUFromStart;
+  mutable bool NEUCalcValid;
+
+  double Vt, Vground;
+  double Mach, MachU;
   double qbar, qbarUW, qbarUV;
   double Re; // Reynolds Number = V*c/mu
   double alpha, beta;
   double adot,bdot;
   double psigt, gamma;
-  double Nz, Ny;
-  double seconds_in_day;  // seconds since current GMT day began
-  int    day_of_year;     // GMT day, 1 .. 366
+  double Nx, Ny, Nz;
 
   double hoverbcg, hoverbmac;
 
@@ -332,7 +363,7 @@ public:
 
   void bind(void);
   double BadUnits(void) const;
-  void Debug(int from);
+  void Debug(int from) override;
 };
 
 } // namespace JSBSim

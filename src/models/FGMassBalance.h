@@ -7,21 +7,21 @@
  ------------- Copyright (C) 2000  Jon S. Berndt (jon@jsbsim.org) --------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 HISTORY
 --------------------------------------------------------------------------------
@@ -38,17 +38,10 @@ SENTRY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <vector>
-#include <string>
+#include <memory>
+
 #include "FGModel.h"
-#include "math/FGColumnVector3.h"
 #include "math/FGMatrix33.h"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_MASSBALANCE "$Id: FGMassBalance.h,v 1.38 2016/12/21 08:08:32 ehofman Exp $"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONSS
@@ -56,21 +49,40 @@ FORWARD DECLARATIONSS
 
 namespace JSBSim {
 
+class FGPropagate;
+class FGGroundReactions;
+
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS DOCUMENTATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-/** Models weight, balance and moment of inertia information.  Maintains a vector
-    of point masses. Sums the contribution of all, and provides this to FGPropagate.
-    Loads the \<mass_balance> section of the aircraft configuration file. There
-    can be any number of <pointmasses>. Each can also have a shape which - if
-    present - causes an associated moment of inertia to be calculated based on
-    the shape. Note that a cylinder is solid, a tube is hollow, a ball is solid
-    and a sphere is hollow.
+/** Models weight, balance and moment of inertia information.
 
-    <h3>Configuration File Format:</h3>
-@code
-    <mass_balance>
+    Maintains a vector of point masses. Sums the contribution of all, and
+    provides this to FGPropagate.  Loads the <mass_balance> section of the
+    aircraft configuration file. There can be any number of <pointmasses>. Each
+    can also have a shape which - if present - causes an associated moment of
+    inertia to be calculated based on the shape. Note that a cylinder is solid,
+    a tube is hollow, a ball is solid and a sphere is hollow.
+
+    The inertia tensor must be specified in the structural frame (x axis
+    positive aft, y axis positive out of the right wing and z axis upward). The
+    sign of the inertia cross products are optional by JSBSim.
+    if negated_crossproduct_inertia == "true", then define:
+        ixy = -integral( x * y * dm ),
+        ixz = -integral( x * z * dm ),
+        iyz = -integral( y * z * dm ).
+    else if negated_crossproduct_inertia == "false", then define:
+        ixy =  integral( x * y * dm ),
+        ixz =  integral( x * z * dm ),
+        iyz =  integral( y * z * dm ).
+    default is negated_crossproduct_inertia = "true".
+    We strongly recommend defining negated_crossproduct_inertia = "false", 
+    which is consistent with the specifications in the field of flight dynamics. 
+    
+    <h3>Configuration File Format for \<mass_balance> Section:</h3>
+@code{.xml}
+    <mass_balance negated_crossproduct_inertia="true|false">
         <ixx unit="{SLUG*FT2 | KG*M2}"> {number} </ixx>
         <iyy unit="{SLUG*FT2 | KG*M2}"> {number} </iyy>
         <izz unit="{SLUG*FT2 | KG*M2}"> {number} </izz>
@@ -98,33 +110,41 @@ CLASS DOCUMENTATION
         ... other point masses ...]
     </mass_balance>
 @endcode
+    
+    @see Stevens and Lewis, "Flight Control & Simulation"
+    @see Bernard Etkin, " Dynamics Of Atmosferic Flight"
+    @see https://en.wikipedia.org/wiki/Moment_of_inertia#Inertia_tensor
+    @see https://www.mathworks.com/help/physmod/sm/ug/specify-custom-inertia.html
   */
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS DECLARATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-class FGMassBalance : public FGModel
+class JSBSIM_API FGMassBalance : public FGModel
 {
 
 public:
-  FGMassBalance(FGFDMExec*);
+  explicit FGMassBalance(FGFDMExec*);
   ~FGMassBalance();
 
-  bool Load(Element* el);
-  bool InitModel(void);
+  bool Load(Element* el) override;
+  bool InitModel(void) override;
   /** Runs the Mass Balance model; called by the Executive
-      Can pass in a value indicating if the executive is directing the simulation to Hold.
-      @param Holding if true, the executive has been directed to hold the sim from 
-                     advancing time. Some models may ignore this flag, such as the Input
-                     model, which may need to be active to listen on a socket for the
-                     "Resume" command to be given.
-      @return false if no error */
-  bool Run(bool Holding);
+      Can pass in a value indicating if the executive is directing the
+      simulation to Hold.
+      @param Holding if true, the executive has been directed to hold the sim
+                     from advancing time. Some models may ignore this flag, such
+                     as the Input model, which may need to be active to listen
+                     on a socket for the "Resume" command to be given.  @return
+                     false if no error */
+  bool Run(bool Holding) override;
 
   double GetMass(void) const {return Mass;}
   double GetWeight(void) const {return Weight;}
   double GetEmptyWeight(void) const {return EmptyWeight;}
+  /** Returns the coordinates of the center of gravity expressed in the
+      structural frame. */
   const FGColumnVector3& GetXYZcg(void) const {return vXYZcg;}
   double GetXYZcg(int axis) const  {return vXYZcg(axis);}
   const FGColumnVector3& GetDeltaXYZcg(void) const {return vDeltaXYZcg;}
@@ -171,7 +191,9 @@ public:
   double GetTotalPointMassWeight(void) const;
 
   const FGColumnVector3& GetPointMassMoment(void);
+  /// Returns the inertia matrix expressed in the body frame.
   const FGMatrix33& GetJ(void) const {return mJ;}
+  /// Returns the inverse of the inertia matrix expressed in the body frame.
   const FGMatrix33& GetJinv(void) const {return mJinv;}
   void SetAircraftBaseInertias(const FGMatrix33& BaseJ) {baseJ = BaseJ;}
   void GetMassPropertiesReport(int i);
@@ -183,9 +205,11 @@ public:
     FGMatrix33 GasInertia;
     FGColumnVector3 TanksMoment;
     FGMatrix33 TankInertia;
+    bool WOW;
   } in;
 
 private:
+  std::shared_ptr<FGPropagate> Propagate;
   double Weight;
   double EmptyWeight;
   double Mass;
@@ -206,19 +230,15 @@ private:
   double GetIyy(void) const { return mJ(2,2); }
   double GetIzz(void) const { return mJ(3,3); }
   double GetIxy(void) const { return -mJ(1,2); }
-  double GetIxz(void) const { return -mJ(1,3); }
+  double GetIxz(void) const { return mJ(1,3); }
   double GetIyz(void) const { return -mJ(2,3); }
 
   /** The PointMass structure encapsulates a point mass object, moments of inertia
      mass, location, etc. */
   struct PointMass {
-    PointMass(double w, FGColumnVector3& vXYZ) {
-      Weight = w;
-      Location = vXYZ;
-      mPMInertia.InitMatrix();
-      Radius = 0.0;
-      Length = 0.0;
-    }
+    PointMass(double w, FGColumnVector3& vXYZ) :
+      eShapeType(esUnspecified), Location(vXYZ), Weight(w), Radius(0.0),
+      Length(0.0) {}
 
     void CalculateShapeInertia(void) {
       switch(eShapeType) {
@@ -280,7 +300,7 @@ private:
   std::vector <struct PointMass*> PointMasses;
 
   void bind(void);
-  void Debug(int from);
+  void Debug(int from) override;
 };
 }
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

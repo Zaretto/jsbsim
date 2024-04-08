@@ -9,21 +9,21 @@
  ------------- Copyright (C) 1999  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -40,18 +40,15 @@ INCLUDES
 
 #include "FGInput.h"
 #include "FGFDMExec.h"
-#include "input_output/FGInputSocket.h"
 #include "input_output/FGUDPInputSocket.h"
 #include "input_output/FGXMLFileRead.h"
-#include "input_output/FGXMLElement.h"
 #include "input_output/FGModelLoader.h"
- 
+#include "input_output/FGLog.h"
+#include "input_output/string_utilities.h"
+
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGInput.cpp,v 1.34 2015/08/23 09:43:31 bcoconni Exp $");
-IDENT(IdHdr,ID_INPUT);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -89,14 +86,17 @@ bool FGInput::Load(Element* el)
   Element* element = ModelLoader.Open(el);
 
   if (!element) return false;
-  
-  FGModel::PreLoad(element, PropertyManager);
+
+  FGModel::PreLoad(element, FDMExec);
 
   size_t idx = InputTypes.size();
   string type = element->GetAttributeValue("type");
   FGInputType* Input = 0;
 
-  if (debug_lvl > 0) cout << endl << "  Input data set: " << idx << "  " << endl;
+  if (debug_lvl > 0) {
+    FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+    log << endl << "  Input data set: " << idx << "  " << endl;
+  }
 
   type = to_upper(type);
 
@@ -105,15 +105,15 @@ bool FGInput::Load(Element* el)
   } else if (type == "QTJSBSIM") {
     Input = new FGUDPInputSocket(FDMExec);
   } else if (type != string("NONE")) {
-    cerr << element->ReadFrom()
-         << "Unknown type of input specified in config file" << endl;
+    FGXMLLogging log(FDMExec->GetLogger(), element, LogLevel::ERROR);
+    log << "Unknown type of input specified in config file" << endl;
   }
 
   if (!Input) return false;
 
   Input->SetIdx(idx);
   Input->Load(element);
-  PostLoad(element, PropertyManager);
+  PostLoad(element, FDMExec);
 
   InputTypes.push_back(Input);
 
@@ -153,14 +153,21 @@ bool FGInput::Run(bool Holding)
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-bool FGInput::SetDirectivesFile(const std::string& fname)
+bool FGInput::SetDirectivesFile(const SGPath& fname)
 {
   FGXMLFileRead XMLFile;
   Element* document = XMLFile.LoadXMLDocument(fname);
+  if (!document) {
+    LogException err(FDMExec->GetLogger());
+    err << "Could not read directive file: " << fname << endl;
+    throw err;
+  }
   bool result = Load(document);
 
-  if (!result)
-    cerr << endl << "Aircraft input element has problems in file " << fname << endl;
+  if (!result) {
+    FGLogging log(FDMExec->GetLogger(), LogLevel::ERROR);
+    log << endl << "Aircraft input element has problems in file " << fname << endl;
+  }
 
   return result;
 }
@@ -229,8 +236,9 @@ void FGInput::Debug(int from)
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGInput" << endl;
-    if (from == 1) cout << "Destroyed:    FGInput" << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGInput" << endl;
+    if (from == 1) log << "Destroyed:    FGInput" << endl;
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -240,8 +248,6 @@ void FGInput::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

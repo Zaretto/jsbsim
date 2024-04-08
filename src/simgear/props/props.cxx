@@ -4,7 +4,6 @@
 //
 // See props.html for documentation [replace with URL when available].
 //
-// $Id: props.cxx,v 1.10 2015/12/25 10:03:28 ehofman Exp $
 
 #ifdef HAVE_CONFIG_H
 #  include <simgear_config.h>
@@ -21,6 +20,7 @@
 #include <iterator>
 #include <stdio.h>
 #include <string.h>
+#include <cassert>
 
 #if PROPS_STANDALONE
 # include <iostream>
@@ -53,6 +53,7 @@ using std::vector;
 using std::stringstream;
 
 using namespace simgear;
+using namespace std;
 
 ////////////////////////////////////////////////////////////////////////
 // Local classes.
@@ -327,9 +328,9 @@ find_child (Itr begin, Itr end, int index, const PropertyList& nodes)
 {
   size_t nNodes = nodes.size();
 #if PROPS_STANDALONE
-  for (int i = 0; i < nNodes; i++) {
+  for (size_t i = 0; i < nNodes; i++) {
     SGPropertyNode * node = nodes[i];
-    if (node->getIndex() == index && compare_strings(node->getName(), begin))
+    if (node->getIndex() == index && compare_strings(node->getNameString().c_str(), begin))
       return i;
   }
 #else
@@ -357,7 +358,7 @@ find_last_child (const char * name, const PropertyList& nodes)
 
   for (size_t i = 0; i < nNodes; i++) {
     SGPropertyNode * node = nodes[i];
-    if (compare_strings(node->getName(), name))
+    if (compare_strings(node->getNameString().c_str(), name))
     {
       int idx = node->getIndex();
       if (idx > index) index = idx;
@@ -541,7 +542,7 @@ find_node (SGPropertyNode * current,
   using namespace boost;
   typedef split_iterator<typename range_result_iterator<Range>::type>
     PathSplitIterator;
-  
+
   PathSplitIterator itr
     = make_split_iterator(path, first_finder("/", is_equal()));
   if (*path.begin() == '/')
@@ -555,11 +556,23 @@ find_node (SGPropertyNode * current,
 // Private methods from SGPropertyNode (may be inlined for speed).
 ////////////////////////////////////////////////////////////////////////
 
+template <typename T>
+inline T getValueFromRaw(SGRaw* value)
+{
+#ifdef NDEBUG
+  return static_cast<SGRawValue<T>*>(value)->getValue();
+#else
+  auto raw_value = dynamic_cast<SGRawValue<T>*>(value);
+  assert(raw_value); // Intercepts casting errors in debug mode.
+  return raw_value->getValue();
+#endif
+}
+
 inline bool
 SGPropertyNode::get_bool () const
 {
   if (_tied)
-    return static_cast<SGRawValue<bool>*>(_value.val)->getValue();
+    return getValueFromRaw<bool>(_value.val);
   else
     return _local_val.bool_val;
 }
@@ -568,7 +581,7 @@ inline int
 SGPropertyNode::get_int () const
 {
   if (_tied)
-      return (static_cast<SGRawValue<int>*>(_value.val))->getValue();
+    return getValueFromRaw<int>(_value.val);
   else
     return _local_val.int_val;
 }
@@ -577,7 +590,7 @@ inline long
 SGPropertyNode::get_long () const
 {
   if (_tied)
-    return static_cast<SGRawValue<long>*>(_value.val)->getValue();
+    return getValueFromRaw<long>(_value.val);
   else
     return _local_val.long_val;
 }
@@ -586,7 +599,7 @@ inline float
 SGPropertyNode::get_float () const
 {
   if (_tied)
-    return static_cast<SGRawValue<float>*>(_value.val)->getValue();
+    return getValueFromRaw<float>(_value.val);
   else
     return _local_val.float_val;
 }
@@ -595,7 +608,7 @@ inline double
 SGPropertyNode::get_double () const
 {
   if (_tied)
-    return static_cast<SGRawValue<double>*>(_value.val)->getValue();
+    return getValueFromRaw<double>(_value.val);
   else
     return _local_val.double_val;
 }
@@ -604,7 +617,7 @@ inline const char *
 SGPropertyNode::get_string () const
 {
   if (_tied)
-      return static_cast<SGRawValue<const char*>*>(_value.val)->getValue();
+    return getValueFromRaw<const char*>(_value.val);
   else
     return _local_val.string_val;
 }
@@ -839,11 +852,11 @@ const int SGPropertyNode::LAST_USED_ATTRIBUTE = PRESERVE;
  */
 SGPropertyNode::SGPropertyNode ()
   : _index(0),
-    _parent(0),
+    _parent(nullptr),
     _type(props::NONE),
     _tied(false),
     _attr(READ|WRITE),
-    _listeners(0)
+    _listeners(nullptr)
 {
   _local_val.string_val = 0;
   _value.val = 0;
@@ -857,11 +870,11 @@ SGPropertyNode::SGPropertyNode (const SGPropertyNode &node)
   : SGReferenced(node),
     _index(node._index),
     _name(node._name),
-    _parent(0),			// don't copy the parent
+    _parent(nullptr),		// don't copy the parent
     _type(node._type),
     _tied(node._tied),
     _attr(node._attr),
-    _listeners(0)		// CHECK!!
+    _listeners(nullptr)	// CHECK!!
 {
   _local_val.string_val = 0;
   _value.val = 0;
@@ -879,7 +892,7 @@ SGPropertyNode::SGPropertyNode (const SGPropertyNode &node)
   }
   switch (_type) {
   case props::BOOL:
-    set_bool(node.get_bool());    
+    set_bool(node.get_bool());
     break;
   case props::INT:
     set_int(node.get_int());
@@ -916,7 +929,7 @@ SGPropertyNode::SGPropertyNode (Itr begin, Itr end,
     _type(props::NONE),
     _tied(false),
     _attr(READ|WRITE),
-    _listeners(0)
+    _listeners(nullptr)
 {
   _local_val.string_val = 0;
   _value.val = 0;
@@ -933,7 +946,7 @@ SGPropertyNode::SGPropertyNode( const std::string& name,
     _type(props::NONE),
     _tied(false),
     _attr(READ|WRITE),
-    _listeners(0)
+    _listeners(nullptr)
 {
   _local_val.string_val = 0;
   _value.val = 0;
@@ -948,7 +961,7 @@ SGPropertyNode::~SGPropertyNode ()
 {
   // zero out all parent pointers, else they might be dangling
   for (unsigned i = 0; i < _children.size(); ++i)
-    _children[i]->_parent = 0;
+    _children[i]->_parent = nullptr;
   clearValue();
 
   if (_listeners) {
@@ -1187,7 +1200,7 @@ SGPropertyNode::getChildren (const char * name) const
   size_t max = _children.size();
 
   for (size_t i = 0; i < max; i++)
-    if (compare_strings(_children[i]->getName(), name))
+    if (compare_strings(_children[i]->getNameString().c_str(), name))
       children.push_back(_children[i]);
 
   sort(children.begin(), children.end(), CompareIndices());
@@ -1242,7 +1255,7 @@ SGPropertyNode::removeChildren(const char * name)
   PropertyList children;
 
   for (int pos = static_cast<int>(_children.size() - 1); pos >= 0; pos--)
-    if (compare_strings(_children[pos]->getName(), name))
+    if (compare_strings(_children[pos]->getNameString().c_str(), name))
       children.push_back(removeChild(pos));
 
   sort(children.begin(), children.end(), CompareIndices());
@@ -1255,7 +1268,7 @@ SGPropertyNode::removeAllChildren()
   for(unsigned i = 0; i < _children.size(); ++i)
   {
     SGPropertyNode_ptr& node = _children[i];
-    node->_parent = 0;
+    node->_parent = nullptr;
     node->setAttribute(REMOVED, true);
     node->clearValue();
     fireChildRemoved(node);
@@ -1306,7 +1319,7 @@ SGPropertyNode::getType () const
 }
 
 
-bool 
+bool
 SGPropertyNode::getBoolValue () const
 {
 				// Shortcut for common case
@@ -1339,7 +1352,7 @@ SGPropertyNode::getBoolValue () const
   }
 }
 
-int 
+int
 SGPropertyNode::getIntValue () const
 {
 				// Shortcut for common case
@@ -1372,7 +1385,7 @@ SGPropertyNode::getIntValue () const
   }
 }
 
-long 
+long
 SGPropertyNode::getLongValue () const
 {
 				// Shortcut for common case
@@ -1405,7 +1418,7 @@ SGPropertyNode::getLongValue () const
   }
 }
 
-float 
+float
 SGPropertyNode::getFloatValue () const
 {
 				// Shortcut for common case
@@ -1438,7 +1451,7 @@ SGPropertyNode::getFloatValue () const
   }
 }
 
-double 
+double
 SGPropertyNode::getDoubleValue () const
 {
 				// Shortcut for common case
@@ -1571,7 +1584,7 @@ SGPropertyNode::setIntValue (int value)
   case props::STRING:
   case props::UNSPECIFIED: {
     char buf[128];
-    sprintf(buf, "%d", value);
+    snprintf(buf, sizeof(buf), "%d", value);
     result = set_string(buf);
     break;
   }
@@ -1622,7 +1635,7 @@ SGPropertyNode::setLongValue (long value)
   case props::STRING:
   case props::UNSPECIFIED: {
     char buf[128];
-    sprintf(buf, "%ld", value);
+    snprintf(buf, sizeof(buf), "%ld", value);
     result = set_string(buf);
     break;
   }
@@ -1673,7 +1686,7 @@ SGPropertyNode::setFloatValue (float value)
   case props::STRING:
   case props::UNSPECIFIED: {
     char buf[128];
-    sprintf(buf, "%f", value);
+    snprintf(buf, sizeof(buf), "%f", value);
     result = set_string(buf);
     break;
   }
@@ -1724,7 +1737,7 @@ SGPropertyNode::setDoubleValue (double value)
   case props::STRING:
   case props::UNSPECIFIED: {
     char buf[128];
-    sprintf(buf, "%f", value);
+    snprintf(buf, sizeof(buf), "%f", value);
     result = set_string(buf);
     break;
   }
@@ -2033,7 +2046,7 @@ SGPropertyNode::untie ()
 SGPropertyNode *
 SGPropertyNode::getRootNode ()
 {
-  if (_parent == 0)
+  if (_parent == nullptr)
     return this;
   else
     return _parent->getRootNode();
@@ -2042,7 +2055,7 @@ SGPropertyNode::getRootNode ()
 const SGPropertyNode *
 SGPropertyNode::getRootNode () const
 {
-  if (_parent == 0)
+  if (_parent == nullptr)
     return this;
   else
     return _parent->getRootNode();
@@ -2363,7 +2376,7 @@ void
 SGPropertyNode::addChangeListener (SGPropertyChangeListener * listener,
                                    bool initial)
 {
-  if (_listeners == 0)
+  if (_listeners == nullptr)
     _listeners = new vector<SGPropertyChangeListener*>;
   _listeners->push_back(listener);
   listener->register_property(this);
@@ -2374,7 +2387,7 @@ SGPropertyNode::addChangeListener (SGPropertyChangeListener * listener,
 void
 SGPropertyNode::removeChangeListener (SGPropertyChangeListener * listener)
 {
-  if (_listeners == 0)
+  if (_listeners == nullptr)
     return;
   vector<SGPropertyChangeListener*>::iterator it =
     find(_listeners->begin(), _listeners->end(), listener);
@@ -2383,7 +2396,7 @@ SGPropertyNode::removeChangeListener (SGPropertyChangeListener * listener)
     listener->unregister_property(this);
     if (_listeners->empty()) {
       vector<SGPropertyChangeListener*>* tmp = _listeners;
-      _listeners = 0;
+      _listeners = nullptr;
       delete tmp;
     }
   }
@@ -2436,12 +2449,12 @@ SGPropertyNode::fireChildrenRemovedRecursive()
 void
 SGPropertyNode::fireValueChanged (SGPropertyNode * node)
 {
-  if (_listeners != 0) {
+  if (_listeners != nullptr) {
     for (unsigned int i = 0; i < _listeners->size(); i++) {
       (*_listeners)[i]->valueChanged(node);
     }
   }
-  if (_parent != 0)
+  if (_parent != nullptr)
     _parent->fireValueChanged(node);
 }
 
@@ -2449,12 +2462,12 @@ void
 SGPropertyNode::fireChildAdded (SGPropertyNode * parent,
 				SGPropertyNode * child)
 {
-  if (_listeners != 0) {
+  if (_listeners != nullptr) {
     for (unsigned int i = 0; i < _listeners->size(); i++) {
       (*_listeners)[i]->childAdded(parent, child);
     }
   }
-  if (_parent != 0)
+  if (_parent != nullptr)
     _parent->fireChildAdded(parent, child);
 }
 
@@ -2462,12 +2475,12 @@ void
 SGPropertyNode::fireChildRemoved (SGPropertyNode * parent,
 				  SGPropertyNode * child)
 {
-  if (_listeners != 0) {
+  if (_listeners != nullptr) {
     for (unsigned int i = 0; i < _listeners->size(); i++) {
       (*_listeners)[i]->childRemoved(parent, child);
     }
   }
-  if (_parent != 0)
+  if (_parent != nullptr)
     _parent->fireChildRemoved(parent, child);
 }
 
@@ -2476,6 +2489,7 @@ SGPropertyNode_ptr
 SGPropertyNode::eraseChild(simgear::PropertyList::iterator child)
 {
   SGPropertyNode_ptr node = *child;
+  node->_parent = nullptr;
   node->setAttribute(REMOVED, true);
   node->clearValue();
   fireChildRemoved(node);
@@ -2558,7 +2572,7 @@ template<>
 std::ostream& SGRawBase<SGVec4d>::printOn(std::ostream& stream) const
 {
     const SGVec4d vec
-        = static_cast<const SGRawValue<SGVec4d>*>(this)->getValue();    
+        = static_cast<const SGRawValue<SGVec4d>*>(this)->getValue();
     for (int i = 0; i < 4; ++i) {
         stream << vec[i];
         if (i < 3)

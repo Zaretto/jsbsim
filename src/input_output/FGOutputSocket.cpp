@@ -55,13 +55,12 @@ INCLUDES
 #include "models/FGFCS.h"
 #include "models/atmosphere/FGWinds.h"
 #include "input_output/FGXMLElement.h"
+#include "math/FGPropertyValue.h"
+#include "input_output/string_utilities.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGOutputSocket.cpp,v 1.9 2014/02/17 05:01:22 jberndt Exp $");
-IDENT(IdHdr,ID_OUTPUTSOCKET);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -87,26 +86,26 @@ void FGOutputSocket::SetOutputName(const string& fname)
   // tokenize the output name
   size_t dot_pos = fname.find(':', 0);
   size_t slash_pos = fname.find('/', 0);
-  
+
   string name = fname.substr(0, dot_pos);
-  
+
   string proto = "TCP";
   if(dot_pos + 1 < slash_pos)
     proto = fname.substr(dot_pos + 1, slash_pos - dot_pos - 1);
-  
+
   string port = "1138";
   if(slash_pos < string::npos)
     port = fname.substr(slash_pos + 1, string::npos);
-  
+
   // set the model name
   Name = name + ":" + port + "/" + proto;
-  
+
   // set the socket params
   SockName = name;
-  
+
   SockPort = atoi(port.c_str());
-  
-  if (proto == "UDP")
+
+  if (to_upper(proto) == "UDP")
     SockProtocol = FGfdmSocket::ptUDP;
   else // Default to TCP
     SockProtocol = FGfdmSocket::ptTCP;
@@ -123,6 +122,12 @@ bool FGOutputSocket::Load(Element* el)
                 el->GetAttributeValue("protocol") + "/" +
                 el->GetAttributeValue("port"));
 
+  // Check if output precision for doubles has been specified, default to 7 if not
+  if(el->HasAttribute("precision"))
+    precision = (int)el->GetAttributeValueAsNumber("precision");
+  else
+    precision = 7;
+
   return true;
 }
 
@@ -132,7 +137,7 @@ bool FGOutputSocket::InitModel(void)
 {
   if (FGOutputType::InitModel()) {
     delete socket;
-    socket = new FGfdmSocket(SockName, SockPort, SockProtocol);
+    socket = new FGfdmSocket(SockName, SockPort, SockProtocol, precision);
 
     if (socket == 0) return false;
     if (!socket->GetConnectStatus()) return false;
@@ -260,13 +265,11 @@ void FGOutputSocket::PrintHeaders(void)
   if (SubSystems & ssPropulsion && Propulsion->GetNumEngines() > 0)
     socket->Append(Propulsion->GetPropulsionStrings(","));
 
-  if (OutputProperties.size() > 0) {
-    for (unsigned int i=0;i<OutputProperties.size();i++)
-      if (OutputCaptions[i].size() > 0) {
-        socket->Append(OutputCaptions[i]);
-      } else {
-        socket->Append(OutputProperties[i]->GetPrintableName());
-      }
+  for (unsigned int i=0;i<OutputParameters.size();++i) {
+    if (!OutputCaptions[i].empty())
+      socket->Append(OutputCaptions[i]);
+    else
+      socket->Append(OutputParameters[i]->GetPrintableName());
   }
 
   socket->Send();
@@ -331,6 +334,7 @@ void FGOutputSocket::Print(void)
     socket->Append(Aircraft->GetMoments(eN));
   }
   if (SubSystems & ssAtmosphere) {
+    const auto Atmosphere = FDMExec->GetAtmosphere();
     socket->Append(Atmosphere->GetDensity());
     socket->Append(Atmosphere->GetPressureSL());
     socket->Append(Atmosphere->GetPressure());
@@ -378,8 +382,8 @@ void FGOutputSocket::Print(void)
     socket->Append(Propulsion->GetPropulsionValues(","));
   }
 
-  for (unsigned int i=0;i<OutputProperties.size();i++) {
-    socket->Append(OutputProperties[i]->getDoubleValue());
+  for (unsigned int i=0;i<OutputParameters.size();++i) {
+    socket->Append(OutputParameters[i]->GetValue());
   }
 
   socket->Send();

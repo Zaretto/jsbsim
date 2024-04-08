@@ -9,21 +9,21 @@
  ------------- Copyright (C) 1999  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -40,21 +40,16 @@ INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 #include "FGOutput.h"
-#include "FGFDMExec.h"
-#include "input_output/FGOutputSocket.h"
 #include "input_output/FGOutputTextFile.h"
 #include "input_output/FGOutputFG.h"
-#include "input_output/FGUDPOutputSocket.h"
 #include "input_output/FGXMLFileRead.h"
-#include "input_output/FGXMLElement.h"
 #include "input_output/FGModelLoader.h"
+#include "input_output/FGLog.h"
+#include "input_output/string_utilities.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGOutput.cpp,v 1.86 2015/08/23 09:43:31 bcoconni Exp $");
-IDENT(IdHdr,ID_OUTPUT);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -62,12 +57,11 @@ CLASS IMPLEMENTATION
 
 FGOutput::FGOutput(FGFDMExec* fdmex) : FGModel(fdmex)
 {
-  typedef int (FGOutput::*iOPV)(void) const;
-
   Name = "FGOutput";
   enabled = true;
 
-  PropertyManager->Tie("simulation/force-output", this, (iOPV)0, &FGOutput::ForceOutput, false);
+  PropertyManager->Tie<FGOutput, int>("simulation/force-output", this, nullptr,
+                                      &FGOutput::ForceOutput);
 
   Debug(0);
 }
@@ -76,9 +70,8 @@ FGOutput::FGOutput(FGFDMExec* fdmex) : FGModel(fdmex)
 
 FGOutput::~FGOutput()
 {
-  vector<FGOutputType*>::iterator it;
-  for (it = OutputTypes.begin(); it != OutputTypes.end(); ++it)
-    delete (*it);
+  for (auto output: OutputTypes)
+    delete output;
 
   Debug(1);
 }
@@ -91,9 +84,8 @@ bool FGOutput::InitModel(void)
 
   if (!FGModel::InitModel()) return false;
 
-  vector<FGOutputType*>::iterator it;
-  for (it = OutputTypes.begin(); it != OutputTypes.end(); ++it)
-    ret &= (*it)->InitModel();
+  for (auto output: OutputTypes)
+    ret &= output->InitModel();
 
   return ret;
 }
@@ -107,9 +99,8 @@ bool FGOutput::Run(bool Holding)
   if (Holding) return false;
   if (!enabled) return true;
 
-  vector<FGOutputType*>::iterator it;
-  for (it = OutputTypes.begin(); it != OutputTypes.end(); ++it)
-    (*it)->Run();
+  for (auto output: OutputTypes)
+    output->Run(Holding);
 
   return false;
 }
@@ -118,18 +109,16 @@ bool FGOutput::Run(bool Holding)
 
 void FGOutput::Print(void)
 {
-  vector<FGOutputType*>::iterator it;
-  for (it = OutputTypes.begin(); it != OutputTypes.end(); ++it)
-    (*it)->Print();
+  for (auto output: OutputTypes)
+    output->Print();
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 void FGOutput::SetStartNewOutput(void)
 {
-  vector<FGOutputType*>::iterator it;
-  for (it = OutputTypes.begin(); it != OutputTypes.end(); ++it)
-    (*it)->SetStartNewOutput();
+  for (auto output: OutputTypes)
+    output->SetStartNewOutput();
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -146,9 +135,8 @@ bool FGOutput::Toggle(int idx)
 
 void FGOutput::SetRateHz(double rate)
 {
-  vector<FGOutputType*>::iterator it;
-  for (it = OutputTypes.begin(); it != OutputTypes.end(); ++it)
-    (*it)->SetRateHz(rate);
+  for (auto output: OutputTypes)
+    output->SetRateHz(rate);
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -182,14 +170,21 @@ string FGOutput::GetOutputName(unsigned int idx) const
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-bool FGOutput::SetDirectivesFile(const std::string& fname)
+bool FGOutput::SetDirectivesFile(const SGPath& fname)
 {
   FGXMLFileRead XMLFile;
   Element* document = XMLFile.LoadXMLDocument(fname);
-  bool result = Load(document);
+  if (!document) {
+    LogException err(FDMExec->GetLogger());
+    err << "Could not read directive file: " << fname;
+    throw err;
+  }
 
-  if (!result)
-    cerr << endl << "Aircraft output element has problems in file " << fname << endl;
+  bool result = Load(document);
+  if (!result) {
+    FGLogging log(FDMExec->GetLogger(), LogLevel::ERROR);
+    log << "\nAircraft output element has problems in file " << fname << "\n";
+  }
 
   return result;
 }
@@ -198,12 +193,15 @@ bool FGOutput::SetDirectivesFile(const std::string& fname)
 
 bool FGOutput::Load(int subSystems, std::string protocol, std::string type,
                     std::string port, std::string name, double outRate,
-                    std::vector<FGPropertyNode_ptr> & outputProperties)
+                    std::vector<SGPropertyNode_ptr> & outputProperties)
 {
   size_t idx = OutputTypes.size();
   FGOutputType* Output = 0;
 
-  if (debug_lvl > 0) cout << endl << "  Output data set: " << idx << endl;
+  if (debug_lvl > 0) {
+    FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+    log << "\n  Output data set: " << idx << "\n";
+  }
 
   type = to_upper(type);
 
@@ -221,13 +219,11 @@ bool FGOutput::Load(int subSystems, std::string protocol, std::string type,
   } else if (type == "FLIGHTGEAR") {
     Output = new FGOutputFG(FDMExec);
     name += ":" + port + "/" + protocol;
-  } else if (type == "QTJSBSIM") {
-    Output = new FGUDPOutputSocket(FDMExec);
-    name += ":" + port + "/" + protocol;
   } else if (type == "TERMINAL") {
     // Not done yet
   } else if (type != string("NONE")) {
-    cerr << "Unknown type of output specified in config file" << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::ERROR);
+    log << "Unknown type of output specified in config file\n";
   }
 
   if (!Output) return false;
@@ -246,25 +242,23 @@ bool FGOutput::Load(int subSystems, std::string protocol, std::string type,
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-bool FGOutput::Load(Element* el)
+bool FGOutput::Load(Element* document, const SGPath& dir)
 {
-  // Unlike the other FGModel classes, properties listed in the <output> section
-  // are not intended to create new properties. For that reason, FGOutput
-  // cannot load its XML directives with FGModel::Load().
-  // Instead FGModelLoader::Open() and FGModel::PreLoad() must be explicitely
-  // called.
-  FGModelLoader ModelLoader(this);
-  Element* element = ModelLoader.Open(el);
+  // Optional path to use for included files
+  includePath = dir;
 
-  if (!element) return false;
-
-  FGModel::PreLoad(element, PropertyManager);
+  // Perform base class Pre-Load
+  if (!FGModel::Upload(document, false))
+    return false;
 
   size_t idx = OutputTypes.size();
-  string type = element->GetAttributeValue("type");
+  string type = document->GetAttributeValue("type");
   FGOutputType* Output = 0;
 
-  if (debug_lvl > 0) cout << endl << "  Output data set: " << idx << "  " << endl;
+  if (debug_lvl > 0) {
+    FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+    log << "\n  Output data set: " << idx << "  \n";
+  }
 
   type = to_upper(type);
 
@@ -276,24 +270,37 @@ bool FGOutput::Load(Element* el)
     Output = new FGOutputSocket(FDMExec);
   } else if (type == "FLIGHTGEAR") {
     Output = new FGOutputFG(FDMExec);
-  } else if (type == "QTJSBSIM") {
-    Output = new FGUDPOutputSocket(FDMExec);
   } else if (type == "TERMINAL") {
     // Not done yet
   } else if (type != string("NONE")) {
-    cerr << "Unknown type of output specified in config file" << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::ERROR);
+    log << "Unknown type of output specified in config file\n";
   }
 
   if (!Output) return false;
 
   Output->SetIdx(idx);
-  Output->Load(element);
-  PostLoad(element, PropertyManager);
+  Output->PreLoad(document, FDMExec);
+  Output->Load(document);
+  Output->PostLoad(document, FDMExec);
 
   OutputTypes.push_back(Output);
 
   Debug(2);
   return true;
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+SGPath FGOutput::FindFullPathName(const SGPath& path) const
+{
+  // Check optional include path if set
+  if (!includePath.isNull()) {
+    SGPath name = CheckPathName(includePath, path);
+    if (!name.isNull()) return name;
+  }
+
+  return FGModel::FindFullPathName(path);
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -317,8 +324,6 @@ bool FGOutput::Load(Element* el)
 
 void FGOutput::Debug(int from)
 {
-  string scratch="";
-
   if (debug_lvl <= 0) return;
 
   if (debug_lvl & 1) { // Standard console startup message output
@@ -329,8 +334,9 @@ void FGOutput::Debug(int from)
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGOutput" << endl;
-    if (from == 1) cout << "Destroyed:    FGOutput" << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGOutput\n";
+    if (from == 1) log << "Destroyed:    FGOutput\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -340,8 +346,6 @@ void FGOutput::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

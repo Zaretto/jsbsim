@@ -35,15 +35,8 @@ SENTRY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include "input_output/FGXMLParse.h"
-#include <iostream>
-#include <fstream>
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_XMLFILEREAD "$Id: FGXMLFileRead.h,v 1.9 2013/12/01 14:33:51 bcoconni Exp $"
+#include "FGXMLParse.h"
+#include "simgear/misc/sg_path.hxx"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
@@ -51,38 +44,18 @@ FORWARD DECLARATIONS
 
 namespace JSBSim {
 
-class FGXMLFileRead {
+class JSBSIM_API FGXMLFileRead {
 public:
   FGXMLFileRead(void) {}
   ~FGXMLFileRead(void) {}
 
-  Element* LoadXMLDocument(std::string XML_filename, bool verbose=true)
+  Element* LoadXMLDocument(const SGPath& XML_filename, bool verbose=true)
   {
     return LoadXMLDocument(XML_filename, file_parser, verbose);
   }
 
-  Element* LoadXMLDocument(std::string XML_filename, FGXMLParse& fparse, bool verbose=true)
-  {
-    std::ifstream infile;
-
-    if ( !XML_filename.empty() ) {
-      if (XML_filename.find(".xml") == std::string::npos) XML_filename += ".xml";
-      infile.open(XML_filename.c_str());
-      if ( !infile.is_open()) {
-        if (verbose) std::cerr << "Could not open file: " << XML_filename << std::endl;
-        return 0L;
-      }
-    } else {
-      std::cerr << "No filename given." << std::endl;
-      return 0L;
-    }
-
-    readXML(infile, fparse, XML_filename);
-    Element* document = fparse.GetDocument();
-    infile.close();
-
-    return document;
-  }
+  Element* LoadXMLDocument(const SGPath& XML_filename, FGXMLParse& fparse,
+                           bool verbose=true);
 
   void ResetParser(void) {file_parser.reset();}
 

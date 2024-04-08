@@ -25,6 +25,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <cctype>
 #include <stdlib.h>
 
 #include "types.h"
@@ -75,7 +76,19 @@ Param::Param(const char* n, const char *h, unsigned& v, const bool& c, unsigned 
     _convert(c),
     _utype(t)
 { 
+    maxval = -1;
     _value.i = &v; 
+}
+
+Param::Param(const char* n, const char *h, unsigned& v, unsigned mv, const bool& c, unsigned t) :
+    _name(n),
+    _help(h ? h : _unspecified),
+    _ptype(PARAM_INT),
+    _convert(c),
+    _utype(t)
+{
+    maxval = mv-1;
+    _value.i = &v;
 }
 
 template <>
@@ -86,6 +99,7 @@ Param::Param(const char* n, const char *h, float& v, const bool& c, unsigned t) 
     _convert(c),
     _utype(t)
 {
+    v = 0.0f;
     _value.f = &v;
 }
 
@@ -111,6 +125,7 @@ void Param::set(std::string& v)
         break;
     case PARAM_INT:
         *_value.i = strtol(v.c_str(), NULL, 10);
+        if (*_value.i > maxval) *_value.i = maxval;
         break;
     case PARAM_FLOAT:
 #if (_MSC_VER)
@@ -129,13 +144,15 @@ void Param::set(std::string& v)
     }
 }
 
-std::string Param::get()
+std::string Param::get(float fact)
 {
     std::ostringstream oss;
     std::string str;
-    float fact;
 
-    fact = 1.0f;
+    oss.precision(2);
+    oss.flags(std::ios::right);
+    oss << std::fixed << std::showpoint;
+
     switch(_ptype)
     {
     case PARAM_BOOL:
@@ -160,6 +177,48 @@ std::string Param::get()
     return str;
 }
 
+std::string Param::get(float value, unsigned utype, bool convert)
+{
+    std::ostringstream oss;
+    std::string str;
+    float fact;
+
+    fact = 1.0f;
+    if (convert) fact /= _cvt_t[utype].fact;
+
+    oss.precision(2);
+    oss.flags(std::ios::right);
+    oss << std::fixed << std::showpoint;
+    oss << (value * fact);
+    str = oss.str();
+
+    return str;
+}
+
+
+std::string Param::get_unit(bool upper, unsigned utype, bool convert)
+{
+    std::string str = _cvt_t[utype].name[convert];
+    if (upper) {
+        std::transform(str.begin(), str.end(), str.begin(),
+                       [](unsigned char c){ return std::toupper(c); }
+                      );
+    }
+    return str;
+}
+
+std::string Param::get_nice()
+{
+    std::string str = get() + " " + get_unit(false, _utype, _convert);
+    return str;
+}
+
+std::string Param::get_nice(float value, unsigned utype, bool convert, bool upper)
+{
+    std::string str = get(value, utype, convert) + " " + get_unit(upper, utype, convert);
+    return str;
+}
+
 // ---------------------------------------------------------------------------
 
 bool const Param::_false = false;
@@ -167,15 +226,18 @@ std::string const Param::_unspecified = "not available";
 
 Param::__cvt const Param::_cvt_t[MAX_UNITS] =
 {
-    { 1.0f,                     {         "",      "" } },	// UNSPECIFIED
-    { KG_TO_LBS,		{      "lbs",    "kg" } },	// WEIGHT
-    { KG_M2_TO_SLUG_FT2,	{ "slug/ft2", "kg/m2" } } ,	// INERTIA
-    { METER_TO_FEET,		{       "ft",     "m" } },	// LENGTH
-    { M2_TO_FT2,		{      "ft2",    "m2" } },	// AREA
-    { LITER_TO_CUBINC_INCH,	{      "in3",     "l" } },	// VOLUME
-    { KMPH_TO_KNOTS,		{       "kt",  "km/h" } },	// SPEED
-    { KW_TO_HP,			{       "hp",    "kW" } },	// POWER
-    { KNETWON_TO_LBS,		{      "lbs",    "kN" } } 	// THRUST
+    { 1.0f,                     {          "",       "" } },	// UNSPECIFIED
+    { KG_TO_LBS,		{       "lbs",     "kg" } },	// WEIGHT
+    { KGM2_TO_SLUGFT2,		{  "slug*ft2",  "kg*m2" } } ,	// INERTIA
+    { METER_TO_FEET,		{        "ft",      "m" } },	// LENGTH
+    { M2_TO_FT2,		{       "ft2",     "m2" } },	// AREA
+    { LITER_TO_CUBIC_INCH,	{       "in3",      "l" } },	// VOLUME
+    { KM_H_TO_KNOTS,		{        "kt",   "km/h" } },	// SPEED
+    { KW_TO_HP,			{        "hp",     "kW" } },	// POWER
+    { KNEWTON_TO_LBS,		{       "lbs",     "kN" } }, 	// THRUST
+    { N_M2_TO_PSF,		{ "lbs/sq-ft",   "N/m2" } },	// LOADING
+    { N_M_TO_LBS_FT, 		{     "lbs/ft",    "N/m" } },	// SPRING
+    { N_M_TO_LBS_FT,		{ "lbs/ft/sec", "N/m/sec"} } 	// DAMPING
 };
 
 } /* namespace Aeromatic */

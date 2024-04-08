@@ -22,12 +22,12 @@
 import math, os
 import xml.etree.ElementTree as et
 import numpy as np
-from JSBSim_utils import JSBSimTestCase, CreateFDM, CopyAircraftDef, ExecuteUntil, RunTest
+from JSBSim_utils import JSBSimTestCase, CopyAircraftDef, ExecuteUntil, RunTest
 
 
 class TestAccelerometer(JSBSimTestCase):
     def AddAccelerometersToAircraft(self, script_path):
-        tree, aircraft_name, b = CopyAircraftDef(script_path, self.sandbox)
+        tree, aircraft_name, _ = CopyAircraftDef(script_path, self.sandbox)
         system_tag = et.SubElement(tree.getroot(), 'system')
         system_tag.attrib['file'] = 'accelerometers'
         tree.write(self.sandbox('aircraft', aircraft_name, aircraft_name+'.xml'))
@@ -44,7 +44,7 @@ class TestAccelerometer(JSBSimTestCase):
         run_tag.attrib['dt'] = '0.1'
         tree.write(script_name)
 
-        fdm = CreateFDM(self.sandbox)
+        fdm = self.create_fdm()
         fdm.set_aircraft_path('aircraft')
         fdm.load_script(script_name)
         # Switch the accel on
@@ -62,14 +62,12 @@ class TestAccelerometer(JSBSimTestCase):
             self.assertAlmostEqual(fdm['accelerations/a-pilot-z-ft_sec2'], 0.0,
                                    delta=1E-8)
 
-        del fdm
-
     def testOnGround(self):
         script_name = 'c1721.xml'
         script_path = self.sandbox.path_to_jsbsim_file('scripts', script_name)
         self.AddAccelerometersToAircraft(script_path)
 
-        fdm = CreateFDM(self.sandbox)
+        fdm = self.create_fdm()
         fdm.set_aircraft_path('aircraft')
         fdm.load_script(script_path)
 
@@ -82,31 +80,31 @@ class TestAccelerometer(JSBSimTestCase):
         fdm['ic/psi-true-rad'] = 0.0
         fdm.run_ic()
 
-        for i in xrange(1000):
+        for _ in range(1000):
             fdm.run()
 
         r = fdm['position/radius-to-vehicle-ft']
         g = fdm['accelerations/gravity-ft_sec2']
         latitude = fdm['position/lat-gc-rad']
+        geodLat = fdm['position/lat-geod-rad']
+        deviation = geodLat - latitude
         pitch = fdm['attitude/theta-rad']
         omega = 0.00007292115  # Earth rotation rate in rad/sec
         fc = r * math.cos(latitude) * omega * omega
 
-        fax = fc * math.sin(latitude - pitch) + g * math.sin(pitch)
-        faz = fc * math.cos(latitude - pitch) - g * math.cos(pitch)
+        fax = fc * math.sin(geodLat - pitch) + g * math.sin(pitch - deviation)
+        faz = fc * math.cos(geodLat - pitch) - g * math.cos(pitch - deviation)
 
         self.assertAlmostEqual(fdm['fcs/accelerometer/X'], fax, delta=1E-7)
         self.assertAlmostEqual(fdm['fcs/accelerometer/Y'], 0.0, delta=1E-7)
-        self.assertAlmostEqual(fdm['fcs/accelerometer/Z'], faz, delta=1E-6)
-
-        del fdm
+        self.assertAlmostEqual(fdm['fcs/accelerometer/Z']/faz, 1.0, delta=1E-7)
 
     def testSteadyFlight(self):
         script_name = 'c1722.xml'
         script_path = self.sandbox.path_to_jsbsim_file('scripts', script_name)
         self.AddAccelerometersToAircraft(script_path)
 
-        fdm = CreateFDM(self.sandbox)
+        fdm = self.create_fdm()
         fdm.set_aircraft_path('aircraft')
         fdm.load_script(script_path)
         # Switch the accel on
@@ -125,19 +123,21 @@ class TestAccelerometer(JSBSimTestCase):
         pitch = fdm['attitude/theta-rad']
         roll = fdm['attitude/phi-rad']
         latitude = fdm['position/lat-gc-rad']
+        geodLat = fdm['position/lat-geod-rad']
+        deviation = geodLat - latitude
         g = fdm['accelerations/gravity-ft_sec2']
         omega = 0.00007292115  # Earth rotation rate in rad/sec
         fc = r * math.cos(latitude) * omega * omega  # Centrifugal force
 
         uvw = np.array(fdm.get_propagate().get_uvw().T)[0]
-        Omega = omega * np.array([math.cos(pitch - latitude),
-                                  math.sin(pitch - latitude) * math.sin(roll),
-                                  math.sin(pitch - latitude) * math.cos(roll)])
+        Omega = omega * np.array([math.cos(pitch - geodLat),
+                                  math.sin(pitch - geodLat) * math.sin(roll),
+                                  math.sin(pitch - geodLat) * math.cos(roll)])
 
         # Compute the acceleration measured by the accelerometer as the sum of
         # the gravity and the centrifugal and Coriolis forces.
-        fa_yz = (fc * math.cos(latitude - pitch) - g * math.cos(pitch))
-        fa = np.array([(fc * math.sin(latitude - pitch) + g * math.sin(pitch)),
+        fa_yz = (fc * math.cos(geodLat - pitch) - g * math.cos(pitch - deviation))
+        fa = np.array([(fc * math.sin(geodLat - pitch) + g * math.sin(pitch - deviation)),
                        fa_yz * math.sin(roll),
                        fa_yz * math.cos(roll)]) + np.cross(2.0*Omega, uvw)
 
@@ -150,17 +150,15 @@ class TestAccelerometer(JSBSimTestCase):
         # Deltas are relaxed because the tolerances of the trimming algorithm
         # are quite relaxed themselves.
         self.assertAlmostEqual(fdm['fcs/accelerometer/X'], fax, delta=1E-6)
-        self.assertAlmostEqual(fdm['fcs/accelerometer/Y'], fay, delta=1E-4)
-        self.assertAlmostEqual(fdm['fcs/accelerometer/Z'], faz, delta=1E-5)
-
-        del fdm
+        self.assertAlmostEqual(fdm['fcs/accelerometer/Y'], fay, delta=1E-5)
+        self.assertAlmostEqual(fdm['fcs/accelerometer/Z'], faz, delta=1E-6)
 
     def testSpinningBodyOnOrbit(self):
         script_name = 'ball_orbit.xml'
         script_path = self.sandbox.path_to_jsbsim_file('scripts', script_name)
         self.AddAccelerometersToAircraft(script_path)
 
-        fdm = CreateFDM(self.sandbox)
+        fdm = self.create_fdm()
         fdm.set_aircraft_path('aircraft')
         fdm.load_model('ball')
         # Offset the CG along Y (by 30")
@@ -196,8 +194,34 @@ class TestAccelerometer(JSBSimTestCase):
         # Acceleration along X should be zero
         self.assertAlmostEqual(fax, 0.0, delta=1E-8)
         # Acceleration along Y should be equal to d*r_dot^2
-        self.assertAlmostEqual(fay / cgy_ft, 1.0, delta=1E-7)
+        self.assertAlmostEqual(fay / cgy_ft, 1.0, delta=1E-8)
         # Acceleration along Z should be zero
         self.assertAlmostEqual(faz, 0.0, delta=1E-8)
+
+    def testFailStuck(self):
+        script_name = 'c1723.xml'
+        script_path = self.sandbox.path_to_jsbsim_file('scripts', script_name)
+        self.AddAccelerometersToAircraft(script_path)
+
+        fdm = self.create_fdm()
+        fdm.set_aircraft_path('aircraft')
+        fdm.load_script(script_path)
+
+        # Switch the accel on
+        fdm['fcs/accelerometer/on'] = 1.0
+        fdm.run_ic()
+
+        stuck = False
+
+        while fdm.run():
+            t = fdm['simulation/sim-time-sec']
+            if t > 30:
+                if not stuck:
+                    last_output = fdm['fcs/accelerometer/Z']
+                    fdm['fcs/accelerometer_z/malfunction/fail_stuck'] = 1.0
+                    stuck = True
+                else:
+                    self.assertAlmostEqual(fdm['fcs/accelerometer/Z'],
+                                           last_output)
 
 RunTest(TestAccelerometer)

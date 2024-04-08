@@ -9,21 +9,21 @@ Called by: Various
  ------------- Copyright (C) 1998 by the authors above -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -48,9 +48,6 @@ INCLUDES
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGMatrix33.cpp,v 1.16 2014/01/13 10:46:03 ehofman Exp $");
-IDENT(IdHdr,ID_MATRIX33);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -162,21 +159,26 @@ FGQuaternion FGMatrix33::GetQuaternion(void) const
 FGColumnVector3 FGMatrix33::GetEuler(void) const
 {
   FGColumnVector3 mEulerAngles;
+  bool GimbalLock = false;
 
-  if (data[8] == 0.0)
-    mEulerAngles(1) = 0.5*M_PI;
-  else
-    mEulerAngles(1) = atan2(data[7], data[8]);
-  
-  if (data[6] < -1.0)
+  if (data[6] <= -1.0) {
     mEulerAngles(2) = 0.5*M_PI;
-  else if (1.0 < data[6])
+    GimbalLock = true;
+  }
+  else if (1.0 <= data[6]) {
     mEulerAngles(2) = -0.5*M_PI;
+    GimbalLock = true;
+  }
   else
     mEulerAngles(2) = asin(-data[6]);
-  
-  if (data[0] == 0.0)
-    mEulerAngles(3) = 0.5*M_PI;
+
+  if (GimbalLock)
+    mEulerAngles(1) = atan2(-data[5], data[4]);
+  else
+    mEulerAngles(1) = atan2(data[7], data[8]);
+
+  if (GimbalLock)
+    mEulerAngles(3) = 0.0;
   else {
     double psi = atan2(data[3], data[0]);
     if (psi < 0.0)
@@ -423,22 +425,17 @@ FGMatrix33 FGMatrix33::operator/(const double scalar) const
 {
   FGMatrix33 Quot;
 
-  if ( scalar != 0 ) {
-    double tmp = 1.0/scalar;
-    Quot.data[0] = data[0] * tmp;
-    Quot.data[3] = data[3] * tmp;
-    Quot.data[6] = data[6] * tmp;
-    Quot.data[1] = data[1] * tmp;
-    Quot.data[4] = data[4] * tmp;
-    Quot.data[7] = data[7] * tmp;
-    Quot.data[2] = data[2] * tmp;
-    Quot.data[5] = data[5] * tmp;
-    Quot.data[8] = data[8] * tmp;
-  } else {
-    MatrixException mE;
-    mE.Message = "Attempt to divide by zero in method FGMatrix33::operator/(const double scalar)";
-    throw mE;
-  }
+  double tmp = 1.0/scalar;
+  Quot.data[0] = data[0] * tmp;
+  Quot.data[3] = data[3] * tmp;
+  Quot.data[6] = data[6] * tmp;
+  Quot.data[1] = data[1] * tmp;
+  Quot.data[4] = data[4] * tmp;
+  Quot.data[7] = data[7] * tmp;
+  Quot.data[2] = data[2] * tmp;
+  Quot.data[5] = data[5] * tmp;
+  Quot.data[8] = data[8] * tmp;
+
   return Quot;
 }
 
@@ -446,22 +443,17 @@ FGMatrix33 FGMatrix33::operator/(const double scalar) const
 
 FGMatrix33& FGMatrix33::operator/=(const double scalar)
 {
-  if ( scalar != 0 ) {
-    double tmp = 1.0/scalar;
-    data[0] *= tmp;
-    data[3] *= tmp;
-    data[6] *= tmp;
-    data[1] *= tmp;
-    data[4] *= tmp;
-    data[7] *= tmp;
-    data[2] *= tmp;
-    data[5] *= tmp;
-    data[8] *= tmp;
-  } else {
-    MatrixException mE;
-    mE.Message = "Attempt to divide by zero in method FGMatrix33::operator/=(const double scalar)";
-    throw mE;
-  }
+  double tmp = 1.0/scalar;
+  data[0] *= tmp;
+  data[3] *= tmp;
+  data[6] *= tmp;
+  data[1] *= tmp;
+  data[4] *= tmp;
+  data[7] *= tmp;
+  data[2] *= tmp;
+  data[5] *= tmp;
+  data[8] *= tmp;
+
   return *this;
 }
 

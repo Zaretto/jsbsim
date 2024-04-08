@@ -8,34 +8,33 @@
  ------------- Copyright (C) 2001  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <cmath>
-#include <cstdlib>
 #include <iostream>
-#include <sstream>
+#include <sstream>  // for assembling the error messages / what of exceptions.
+#include <stdexcept>  // using domain_error, invalid_argument, and length_error.
 
 #include "FGXMLElement.h"
-#include "string_utilities.h"
 #include "FGJSBBase.h"
+#include "input_output/string_utilities.h"
 
 using namespace std;
 
@@ -44,9 +43,6 @@ FORWARD DECLARATIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGXMLElement.cpp,v 1.56 2016/09/11 11:26:04 bcoconni Exp $");
-IDENT(IdHdr,ID_XMLELEMENT);
 
 bool Element::converterIsInitialized = false;
 map <string, map <string, double> > Element::convert;
@@ -94,6 +90,12 @@ Element::Element(const string& nm)
     convert["FT3"]["M3"] = 1.0/convert["M3"]["FT3"];
     convert["LTR"]["IN3"] = 61.0237441;
     convert["IN3"]["LTR"] = 1.0/convert["LTR"]["IN3"];
+    convert["GAL"]["FT3"] = 0.133681;
+    convert["FT3"]["GAL"] = 1.0/convert["GAL"]["FT3"];
+    convert["IN3"]["GAL"] = convert["IN3"]["FT3"]*convert["FT3"]["GAL"];
+    convert["LTR"]["GAL"] = convert["LTR"]["IN3"]*convert["IN3"]["GAL"];
+    convert["M3"]["GAL"] = 1000.*convert["LTR"]["GAL"];
+    convert["CC"]["GAL"] = convert["CC"]["IN3"]*convert["IN3"]["GAL"];
     // Mass & Weight
     convert["LBS"]["KG"] = 0.45359237;
     convert["KG"]["LBS"] = 1.0/convert["LBS"]["KG"];
@@ -124,9 +126,10 @@ Element::Element(const string& nm)
     convert["N"]["LBS"] = 0.22482;
     convert["LBS"]["N"] = 1.0/convert["N"]["LBS"];
     // Velocity
-    convert["KTS"]["FT/SEC"] = 1.68781;
+    convert["KTS"]["FT/SEC"] = 1.6878098571;
     convert["FT/SEC"]["KTS"] = 1.0/convert["KTS"]["FT/SEC"];
     convert["M/S"]["FT/S"] = 3.2808399;
+    convert["M/S"]["KTS"] = convert["M/S"]["FT/S"]/convert["KTS"]["FT/SEC"];
     convert["M/SEC"]["FT/SEC"] = 3.2808399;
     convert["FT/S"]["M/S"] = 1.0/convert["M/S"]["FT/S"];
     convert["M/SEC"]["FT/SEC"] = 3.2808399;
@@ -156,6 +159,7 @@ Element::Element(const string& nm)
     convert["PA"]["LBS/FT2"] = 1.0/convert["LBS/FT2"]["PA"];
     // Mass flow
     convert["KG/MIN"]["LBS/MIN"] = convert["KG"]["LBS"];
+    convert["KG/SEC"]["LBS/SEC"] = convert["KG"]["LBS"];
     convert ["N/SEC"]["LBS/SEC"] = 0.224808943;
     convert ["LBS/SEC"]["N/SEC"] = 1.0/convert ["N/SEC"]["LBS/SEC"];
     // Fuel Consumption
@@ -164,6 +168,9 @@ Element::Element(const string& nm)
     // Density
     convert["KG/L"]["LBS/GAL"] = 8.3454045;
     convert["LBS/GAL"]["KG/L"] = 1.0/convert["KG/L"]["LBS/GAL"];
+    // Gravitational
+    convert["FT3/SEC2"]["M3/SEC2"] = convert["FT3"]["M3"];
+    convert["M3/SEC2"]["FT3/SEC2"] = convert["M3"]["FT3"];
 
     // Length
     convert["M"]["M"] = 1.00;
@@ -179,6 +186,7 @@ Element::Element(const string& nm)
     convert["M3"]["M3"] = 1.0;
     convert["FT3"]["FT3"] = 1.0;
     convert["LTR"]["LTR"] = 1.0;
+    convert["GAL"]["GAL"] = 1.0;
     // Mass & Weight
     convert["KG"]["KG"] = 1.00;
     convert["LBS"]["LBS"] = 1.00;
@@ -236,6 +244,13 @@ Element::Element(const string& nm)
     // Density
     convert["KG/L"]["KG/L"] = 1.0;
     convert["LBS/GAL"]["LBS/GAL"] = 1.0;
+    // Gravitational
+    convert["FT3/SEC2"]["FT3/SEC2"] = 1.0;
+    convert["M3/SEC2"]["M3/SEC2"] = 1.0;
+    // Electrical
+    convert["VOLTS"]["VOLTS"] = 1.0;
+    convert["OHMS"]["OHMS"] = 1.0;
+    convert["AMPERES"]["AMPERES"] = 1.0;
   }
 }
 
@@ -273,20 +288,22 @@ double Element::GetAttributeValueAsNumber(const string& attr)
   string attribute = GetAttributeValue(attr);
 
   if (attribute.empty()) {
-    cerr << ReadFrom() << "Expecting numeric attribute value, but got no data"
-         << endl;
-    exit(-1);
+    std::stringstream s;
+    s << ReadFrom() << "Expecting numeric attribute value, but got no data";
+    cerr << s.str() << endl;
+    throw length_error(s.str());
   }
   else {
     double number=0;
-    if (is_number(trim(attribute)))
-      number = atof(attribute.c_str());
-    else {
-      cerr << ReadFrom() << "Expecting numeric attribute value, but got: "
-           << attribute << endl;
-      exit(-1);
+    try {
+      number = atof_locale_c(attribute);
+    } catch (InvalidNumber& e) {
+      std::stringstream s;
+      s << ReadFrom() << e.what();
+      cerr << s.str() << endl;
+      throw BaseException(s.str());
     }
-    
+
     return (number);
   }
 }
@@ -322,7 +339,7 @@ Element* Element::GetNextElement(void)
 
 string Element::GetDataLine(unsigned int i)
 {
-  if (data_lines.size() > 0) return data_lines[i];
+  if (!data_lines.empty()) return data_lines[i];
   else return string("");
 }
 
@@ -332,25 +349,32 @@ double Element::GetDataAsNumber(void)
 {
   if (data_lines.size() == 1) {
     double number=0;
-    if (is_number(trim(data_lines[0])))
-      number = atof(data_lines[0].c_str());
-    else {
-      cerr << ReadFrom() << "Expected numeric value, but got: " << data_lines[0]
-           << endl;
-      exit(-1);
+    try {
+      number = atof_locale_c(data_lines[0]);
+    } catch (InvalidNumber& e) {
+      std::stringstream s;
+      s << ReadFrom() << e.what();
+      cerr << s.str() << endl;
+      throw BaseException(s.str());
     }
 
     return number;
-  } else if (data_lines.size() == 0) {
-    cerr << ReadFrom() << "Expected numeric value, but got no data" << endl;
-    exit(-1);
+  } else if (data_lines.empty()) {
+    std::stringstream s;
+    s << ReadFrom() << "Expected numeric value, but got no data";
+    cerr << s.str() << endl;
+    throw length_error(s.str());
   } else {
     cerr << ReadFrom() << "Attempting to get single data value in element "
          << "<" << name << ">" << endl
          << " from multiple lines:" << endl;
     for(unsigned int i=0; i<data_lines.size(); ++i)
       cerr << data_lines[i] << endl;
-    exit(-1);
+    std::stringstream s;
+    s << ReadFrom() << "Attempting to get single data value in element "
+      << "<" << name << ">"
+      << " from multiple lines (" << data_lines.size() << ").";
+    throw length_error(s.str());
   }
 }
 
@@ -417,9 +441,32 @@ double Element::FindElementValueAsNumber(const string& el)
     value = DisperseValue(element, value);
     return value;
   } else {
-    cerr << ReadFrom() << "Attempting to get non-existent element " << el
+    std::stringstream s;
+    s << ReadFrom() << "Attempting to get non-existent element " << el;
+    cerr << s.str() << endl;
+    throw length_error(s.str());
+  }
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+bool Element::FindElementValueAsBoolean(const string& el)
+{
+  Element* element = FindElement(el);
+  if (element) {
+    // check value as an ordinary number
+    double value = element->GetDataAsNumber();
+
+    // now check how it should return data
+    if (value == 0) {
+      return false;
+    } else {
+      return true;
+    }
+  } else {
+    cerr << ReadFrom() << "Attempting to get non-existent element " << el << " ;returning false"
          << endl;
-    exit(-1);
+    return false;
   }
 }
 
@@ -442,24 +489,28 @@ double Element::FindElementValueAsNumberConvertTo(const string& el, const string
   Element* element = FindElement(el);
 
   if (!element) {
-    cerr << ReadFrom() << "Attempting to get non-existent element " << el
-         << endl;
-    exit(-1);
+    std::stringstream s;
+    s << ReadFrom() << "Attempting to get non-existent element " << el;
+    cerr << s.str() << endl;
+    throw length_error(s.str());
   }
 
   string supplied_units = element->GetAttributeValue("unit");
 
   if (!supplied_units.empty()) {
     if (convert.find(supplied_units) == convert.end()) {
-      cerr << element->ReadFrom() << "Supplied unit: \""
-           << supplied_units << "\" does not exist (typo?)." << endl;
-      exit(-1);
+      std::stringstream s;
+      s << element->ReadFrom() << "Supplied unit: \"" << supplied_units
+        << "\" does not exist (typo?).";
+      cerr << s.str() << endl;
+      throw invalid_argument(s.str());
     }
     if (convert[supplied_units].find(target_units) == convert[supplied_units].end()) {
-      cerr << element->ReadFrom() << "Supplied unit: \""
-           << supplied_units << "\" cannot be converted to " << target_units
-           << endl;
-      exit(-1);
+      std::stringstream s;
+      s << element->ReadFrom() << "Supplied unit: \"" << supplied_units
+        << "\" cannot be converted to " << target_units;
+      cerr << s.str() << endl;
+      throw invalid_argument(s.str());
     }
   }
 
@@ -476,8 +527,8 @@ double Element::FindElementValueAsNumberConvertTo(const string& el, const string
          << value << " DEG is outside the range [ -360 DEG ; +360 DEG ]"
          << endl;
   }
-  
-  
+
+
   if (!supplied_units.empty()) {
     value *= convert[supplied_units][target_units];
   }
@@ -507,21 +558,26 @@ double Element::FindElementValueAsNumberConvertFromTo( const string& el,
   Element* element = FindElement(el);
 
   if (!element) {
-    cerr << "Attempting to get non-existent element " << el << endl;
-    exit(-1);
+    std::stringstream s;
+    s << ReadFrom() << "Attempting to get non-existent element " << el;
+    cerr << s.str() << endl;
+    throw length_error(s.str());
   }
 
   if (!supplied_units.empty()) {
     if (convert.find(supplied_units) == convert.end()) {
-      cerr << element->ReadFrom() << "Supplied unit: \""
-           << supplied_units << "\" does not exist (typo?)." << endl;
-      exit(-1);
+      std::stringstream s;
+      s << element->ReadFrom() << "Supplied unit: \"" << supplied_units
+        << "\" does not exist (typo?).";
+      cerr << s.str() << endl;
+      throw invalid_argument(s.str());
     }
     if (convert[supplied_units].find(target_units) == convert[supplied_units].end()) {
-      cerr << element->ReadFrom() << "Supplied unit: \""
-           << supplied_units << "\" cannot be converted to " << target_units
-           << endl;
-      exit(-1);
+      std::stringstream s;
+      s << element->ReadFrom() << "Supplied unit: \"" << supplied_units
+        << "\" cannot be converted to " << target_units;
+      cerr << s.str() << endl;
+      throw invalid_argument(s.str());
     }
   }
 
@@ -546,15 +602,18 @@ FGColumnVector3 Element::FindElementTripletConvertTo( const string& target_units
 
   if (!supplied_units.empty()) {
     if (convert.find(supplied_units) == convert.end()) {
-      cerr << ReadFrom() << "Supplied unit: \""
-           << supplied_units << "\" does not exist (typo?)." << endl;
-      exit(-1);
+      std::stringstream s;
+      s << ReadFrom() << "Supplied unit: \"" << supplied_units
+        << "\" does not exist (typo?).";
+      cerr << s.str() << endl;
+      throw invalid_argument(s.str());
     }
     if (convert[supplied_units].find(target_units) == convert[supplied_units].end()) {
-      cerr << ReadFrom() << "Supplied unit: \""
-           << supplied_units << "\" cannot be converted to " << target_units
-           << endl;
-      exit(-1);
+      std::stringstream s;
+      s << ReadFrom() << "Supplied unit: \"" << supplied_units
+        << "\" cannot be converted to " << target_units;
+      cerr << s.str() << endl;
+      throw invalid_argument(s.str());
     }
   }
 
@@ -567,7 +626,7 @@ FGColumnVector3 Element::FindElementTripletConvertTo( const string& target_units
   } else {
     triplet(1) = 0.0;
   }
-  
+
 
   item = FindElement("y");
   if (!item) item = FindElement("pitch");
@@ -598,39 +657,34 @@ double Element::DisperseValue(Element *e, double val, const std::string& supplie
                               const std::string& target_units)
 {
   double value=val;
-
   bool disperse = false;
-  try {
-    char* num = getenv("JSBSIM_DISPERSE");
-    if (num) {
-      disperse = (atoi(num) == 1);  // set dispersions
-    }
-  } catch (...) {                   // if error set to false
-    disperse = false;
-    std::cerr << "Could not process JSBSIM_DISPERSE environment variable: Assumed NO dispersions." << endl;
-  }
+
+  if(char* num = getenv("JSBSIM_DISPERSE"); num != nullptr)
+    disperse = strtol(num, nullptr, 0) == 1;  // set dispersions
 
   if (e->HasAttribute("dispersion") && disperse) {
     double disp = e->GetAttributeValueAsNumber("dispersion");
     if (!supplied_units.empty()) disp *= convert[supplied_units][target_units];
     string attType = e->GetAttributeValue("type");
+    RandomNumberGenerator generator;
+
     if (attType == "gaussian" || attType == "gaussiansigned") {
-      double grn = FGJSBBase::GaussianRandomNumber();
-    if (attType == "gaussian") {
-      value = val + disp*grn;
-      } else { // Assume gaussiansigned
-        value = (val + disp*grn)*(fabs(grn)/grn);
-      }
+      double grn = generator.GetNormalRandomNumber();
+      if (attType == "gaussian")
+        value = val + disp*grn;
+      else // Assume gaussiansigned
+        value = (val + disp*grn)*FGJSBBase::sign(grn);
     } else if (attType == "uniform" || attType == "uniformsigned") {
-      double urn = ((((double)rand()/RAND_MAX)-0.5)*2.0);
-      if (attType == "uniform") {
-      value = val + disp * urn;
-      } else { // Assume uniformsigned
-        value = (val + disp * urn)*(fabs(urn)/urn);
-      }
+      double urn = generator.GetUniformRandomNumber();
+      if (attType == "uniform")
+        value = val + disp * urn;
+      else // Assume uniformsigned
+        value = (val + disp * urn)*FGJSBBase::sign(urn);
     } else {
-      cerr << ReadFrom() << "Unknown dispersion type" << attType << endl;
-      exit(-1);
+      std::stringstream s;
+      s << ReadFrom() << "Unknown dispersion type" << attType;
+      cerr << s.str() << endl;
+      throw domain_error(s.str());
     }
 
   }

@@ -35,18 +35,15 @@ HISTORY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <iostream>
-#include <sstream>
-
+#include "FGFDMExec.h"
+#include "input_output/FGPropertyManager.h"
 #include "FGThruster.h"
 #include "input_output/FGXMLElement.h"
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGThruster.cpp,v 1.22 2015/09/27 10:03:53 bcoconni Exp $");
-IDENT(IdHdr,ID_THRUSTER);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -66,19 +63,36 @@ FGThruster::FGThruster(FGFDMExec *FDMExec, Element *el, int num ): FGForce(FDMEx
 
   GearRatio = 1.0;
   EngineNum = num;
-  FGPropertyManager* PropertyManager = FDMExec->GetPropertyManager();
+  auto PropertyManager = FDMExec->GetPropertyManager();
 
 // Determine the initial location and orientation of this thruster and load the
 // thruster with this information.
 
   element = thruster_element->FindElement("location");
   if (element)  location = element->FindElementTripletConvertTo("IN");
-  else          cerr << fgred << "      No thruster location found." << reset << endl;
+  else {
+    FGXMLLogging log(FDMExec->GetLogger(), thruster_element, LogLevel::ERROR);
+    log << LogFormat::RED << "      No thruster location found."
+        << LogFormat::RESET << "\n";
+  }
 
   SetLocation(location);
 
   string property_name, base_property_name;
   base_property_name = CreateIndexedPropertyName("propulsion/engine", EngineNum);
+
+  property_name = base_property_name + "/x-reference-position";
+  PropertyManager->Tie(property_name.c_str(), (FGForce*)this, &FGForce::GetLocationX);
+  property_name = base_property_name + "/y-reference-position";
+  PropertyManager->Tie(property_name.c_str(), (FGForce*)this, &FGForce::GetLocationY);
+  property_name = base_property_name + "/z-reference-position";
+  PropertyManager->Tie(property_name.c_str(), (FGForce*)this, &FGForce::GetLocationZ);
+  property_name = base_property_name + "/x-position";
+  PropertyManager->Tie(property_name.c_str(), (FGForce*)this, &FGForce::GetActingLocationX, &FGForce::SetActingLocationX);
+  property_name = base_property_name + "/y-position";
+  PropertyManager->Tie(property_name.c_str(), (FGForce*)this, &FGForce::GetActingLocationY, &FGForce::SetActingLocationY);
+  property_name = base_property_name + "/z-position";
+  PropertyManager->Tie(property_name.c_str(), (FGForce*)this, &FGForce::GetActingLocationZ, &FGForce::SetActingLocationZ);
 
   element = thruster_element->FindElement("pointing");
   if (element)  {
@@ -184,8 +198,9 @@ void FGThruster::Debug(int from)
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGThruster" << endl;
-    if (from == 1) cout << "Destroyed:    FGThruster" << endl;
+    FGLogging log(fdmex->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGThruster\n";
+    if (from == 1) log << "Destroyed:    FGThruster\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -195,8 +210,6 @@ void FGThruster::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

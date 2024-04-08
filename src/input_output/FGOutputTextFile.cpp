@@ -9,21 +9,21 @@
  ------------- Copyright (C) 2011 Bertrand Coconnier -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -38,34 +38,24 @@ HISTORY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <cstring>
-#include <cstdlib>
-#include <iomanip>
-#include <sstream>
-
 #include "FGOutputTextFile.h"
-#include "FGFDMExec.h"
 #include "models/FGAerodynamics.h"
 #include "models/FGAccelerations.h"
-#include "models/FGAircraft.h"
 #include "models/FGAtmosphere.h"
 #include "models/FGAuxiliary.h"
 #include "models/FGPropulsion.h"
 #include "models/FGMassBalance.h"
-#include "models/FGPropagate.h"
-#include "models/FGGroundReactions.h"
 #include "models/FGExternalReactions.h"
 #include "models/FGBuoyantForces.h"
 #include "models/FGFCS.h"
 #include "models/atmosphere/FGWinds.h"
-#include "input_output/FGXMLElement.h"
+#include "FGXMLElement.h"
+#include "string_utilities.h"
+#include "FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGOutputTextFile.cpp,v 1.12 2016/05/22 10:28:23 bcoconni Exp $");
-IDENT(IdHdr,ID_OUTPUTTEXTFILE);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -75,8 +65,6 @@ bool FGOutputTextFile::Load(Element* el)
 {
   if(!FGOutputFile::Load(el))
     return false;
-
-//  PreLoad(el, PropertyManager);
 
   string type = el->GetAttributeValue("type");
   string delim;
@@ -96,12 +84,13 @@ bool FGOutputTextFile::Load(Element* el)
 bool FGOutputTextFile::OpenFile(void)
 {
   datafile.clear();
-  datafile.open(Filename.c_str());
+  datafile.open(Filename);
   if (!datafile) {
-    cerr << endl << fgred << highint << "ERROR: unable to open the file "
-         << reset << Filename.c_str() << endl
-         << fgred << highint << "       => Output to this file is disabled."
-         << reset << endl << endl;
+    FGLogging log(FDMExec->GetLogger(), LogLevel::ERROR);
+    log << LogFormat::RED << LogFormat::BOLD << "\nERROR: unable to open the file "
+        << LogFormat::RESET << Filename.c_str()
+        << LogFormat::RED << LogFormat::BOLD << "\n       => Output to this file is disabled.\n\n"
+        << LogFormat::RESET;
     Disable();
     return false;
   }
@@ -234,17 +223,15 @@ bool FGOutputTextFile::OpenFile(void)
     outstream << delimeter;
     outstream << Propulsion->GetPropulsionStrings(delimeter);
   }
-  if (OutputProperties.size() > 0) {
-    for (unsigned int i=0;i<OutputProperties.size();i++) {
-      if (OutputCaptions[i].size() > 0) {
-        outstream << delimeter << OutputCaptions[i];
-      } else {
-        outstream << delimeter << OutputProperties[i]->GetFullyQualifiedName();
-      }
-    }
+
+  for (unsigned int i=0;i<OutputParameters.size();++i) {
+    if (!OutputCaptions[i].empty())
+      outstream << delimeter << OutputCaptions[i];
+    else
+      outstream << delimeter << OutputParameters[i]->GetFullyQualifiedName();
   }
 
-  if (PreFunctions.size() > 0) {
+  if (!PreFunctions.empty()) {
     for (unsigned int i=0;i<PreFunctions.size();i++) {
       outstream << delimeter << PreFunctions[i]->GetName();
     }
@@ -261,9 +248,9 @@ bool FGOutputTextFile::OpenFile(void)
 void FGOutputTextFile::Print(void)
 {
   streambuf* buffer;
-  string scratch = "";
+  string scratch = Filename.utf8Str();
 
-  if (Filename == "COUT" || Filename == "cout") {
+  if (to_upper(scratch) == "COUT") {
     buffer = cout.rdbuf();
   } else {
     buffer = datafile.rdbuf();
@@ -333,6 +320,7 @@ void FGOutputTextFile::Print(void)
     outstream << Accelerations->GetMoments().Dump(delimeter);
   }
   if (SubSystems & ssAtmosphere) {
+    const auto Atmosphere = FDMExec->GetAtmosphere();
     outstream << delimeter;
     outstream << Atmosphere->GetDensity() << delimeter;
     outstream << Atmosphere->GetAbsoluteViscosity() << delimeter;
@@ -364,9 +352,9 @@ void FGOutputTextFile::Print(void)
     outstream << Propagate->GetQuaternionECI().Dump(delimeter) << delimeter;
     outstream << Auxiliary->Getalpha(inDegrees) << delimeter;
     outstream << Auxiliary->Getbeta(inDegrees) << delimeter;
-    outstream << Propagate->GetLocation().GetLatitudeDeg() << delimeter;
-    outstream << Propagate->GetLocation().GetGeodLatitudeDeg() << delimeter;
-    outstream << Propagate->GetLocation().GetLongitudeDeg() << delimeter;
+    outstream << Propagate->GetLatitudeDeg() << delimeter;
+    outstream << Propagate->GetGeodLatitudeDeg() << delimeter;
+    outstream << Propagate->GetLongitudeDeg() << delimeter;
     outstream.precision(18);
     outstream << ((FGColumnVector3)Propagate->GetInertialPosition()).Dump(delimeter) << delimeter;
     outstream << ((FGColumnVector3)Propagate->GetLocation()).Dump(delimeter) << delimeter;
@@ -394,8 +382,8 @@ void FGOutputTextFile::Print(void)
   }
 
   outstream.precision(18);
-  for (unsigned int i=0;i<OutputProperties.size();i++) {
-    outstream << delimeter << OutputProperties[i]->getDoubleValue();
+  for (unsigned int i=0;i<OutputParameters.size();++i) {
+    outstream << delimeter << OutputParameters[i]->GetValue();
   }
   for (unsigned int i=0;i<PreFunctions.size();i++) {
     outstream << delimeter << PreFunctions[i]->getDoubleValue();

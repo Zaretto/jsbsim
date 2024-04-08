@@ -20,7 +20,7 @@
 #
 
 import os
-from JSBSim_utils import JSBSimTestCase, append_xml, CreateFDM, CheckXMLFile, RunTest
+from JSBSim_utils import JSBSimTestCase, CheckXMLFile, RunTest
 
 
 class CheckAircrafts(JSBSimTestCase):
@@ -33,7 +33,7 @@ class CheckAircrafts(JSBSimTestCase):
             if not os.path.isdir(fullpath):
                 continue
 
-            f = os.path.join(aircraft_path, d, append_xml(d))
+            f = os.path.join(aircraft_path, d, d+'.xml')
 
             # Is f an aircraft definition file ?
             if not CheckXMLFile(f, 'fdm_config'):
@@ -42,7 +42,7 @@ class CheckAircrafts(JSBSimTestCase):
             if d in ('blank'):
                 continue
 
-            fdm = CreateFDM(self.sandbox)
+            fdm = self.create_fdm()
             self.assertTrue(fdm.load_model(d),
                             msg='Failed to load aircraft %s' % (d,))
 
@@ -56,6 +56,11 @@ class CheckAircrafts(JSBSimTestCase):
                     except RuntimeError:
                         self.fail('Failed to run IC %s for aircraft %s' % (f, d))
 
-            del fdm
+    def test_aircraft_name(self):
+        fdm = self.create_fdm()
+        fdm.load_model('c172x')
+        aircraft = fdm.get_aircraft()
+        self.assertEqual(aircraft.get_aircraft_name(), "Cessna C-172 Skyhawk II")
+
 
 RunTest(CheckAircrafts)

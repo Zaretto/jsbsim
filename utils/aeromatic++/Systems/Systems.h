@@ -27,8 +27,8 @@
 #define __SYSTEMS_H
 
 #include <stdio.h>
+#include <memory>
 #include <string>
-#include <vector>
 
 #include <types.h>
 
@@ -42,21 +42,20 @@ class System
 public:
     System(Aeromatic *p, bool e = false) :
         _aircraft(p),
-        _enabled(e),
-        _param(0),
-        _subtype(0) {}
+        _enabled(e) {}
 
     virtual ~System() {
-        std::vector<Param*>::iterator it;
-        for(it = _inputs.begin(); it != _inputs.end(); ++it) {
-            delete *it;
+        for (auto it : _inputs) {
+            delete it.second;
         }
+        _inputs.clear();
     }
 
     /* construct the configuration file(s) */
-    virtual void set(const float* cg_loc) {}
+    virtual void set(const float cg_loc[3]) {}
     virtual std::string comment() { return ""; }
     virtual std::string fdm() { return ""; }
+    virtual std::string json(const float cg_loc[3]) { return ""; }
     virtual std::string mass_balance() { return ""; }
     virtual std::string system() { return ""; }
     virtual std::string external_force() { return ""; }
@@ -68,7 +67,7 @@ public:
     virtual std::string pitch() { return ""; }
     virtual std::string yaw() { return ""; }
 
-    unsigned no_descriptors() {
+    size_t no_descriptors() {
         return _description.size();
     }
 
@@ -76,13 +75,14 @@ public:
         return _description[_subtype];
     }
 
+    virtual void set_cg(float cg[3], const float aero[3]) {}
 
     virtual void param_reset() {
         _param = 0;
     }
 
     virtual Param* param_next() {
-        return ((!_param || _enabled) && (_param < _inputs.size())) ? _inputs[_param++] : 0;
+        return ((!_param || _enabled) && (_param < _inputs_order.size())) ? _inputs[_inputs_order[_param++]] : 0;
     }
 
     bool enabled() {
@@ -95,9 +95,10 @@ public:
     bool _enabled;
 
 protected:
-    std::vector<Param*> _inputs;
-    unsigned _param;
-    int _subtype;
+    std::vector<std::string> _inputs_order;
+    std::map<std::string,Param*> _inputs;
+    unsigned _param = 0;
+    int _subtype = 0;
 
     static char const* _supported;
 };
@@ -108,17 +109,18 @@ class Flaps : public System
 public:
     Flaps(Aeromatic *p) : System(p, true) {
         _description.push_back("Flaps");
-        _inputs.push_back(new Param(_description[0].c_str(), _supported, _enabled));
+        _inputs_order.push_back("Flaps");
+        _inputs["Flaps"] = new Param(_description[0].c_str(), _supported, _enabled);
     }
     ~Flaps() {}
 
-    void set(const float* cg_loc);
+    void set(const float cg_loc[3]);
     std::string system();
 
     std::string lift();
     std::string drag();
 
-private:
+public:
     static float const _dCLflaps_t[MAX_AIRCRAFT][5];
     static float const _CDflaps_t[MAX_AIRCRAFT][5];
 
@@ -132,12 +134,17 @@ public:
     LandingGear(Aeromatic *p);
     ~LandingGear() {}
 
-    void set(const float* cg_loc);
+    void set(const float cg_loc[3]);
     std::string comment();
     std::string fdm();
+    std::string json(const float cg_loc[3]);
     std::string system();
 
     std::string drag();
+
+    void set_cg(float cg[3], const float aero[3]) {
+        if (_taildragger) cg[X] = aero[X] + (aero[X] - cg[X]);
+    }
 
 private:
     bool _taildragger;
@@ -163,7 +170,8 @@ class ArrestorHook : public System
 public:
     ArrestorHook(Aeromatic *p) : System(p) {
         _description.push_back("Arrestor Hook");
-        _inputs.push_back(new Param(_description[0].c_str(), _supported, _enabled));
+        _inputs_order.push_back("Arrestor Hook");
+        _inputs["Arrestor Hook"] = new Param(_description[0].c_str(), _supported, _enabled);
     }
     ~ArrestorHook() {}
 
@@ -178,8 +186,10 @@ class Spoilers : public System
 public:
     Spoilers(Aeromatic *p) : System(p) {
         _description.push_back("Spoilers");
-        _inputs.push_back(new Param(_description[0].c_str(), _supported, _enabled));
-        _inputs.push_back(new Param("Is the spoiler differential?", "Differential spoilers are used for faster roll rate", _differential));
+        _inputs_order.push_back("Spoilers");
+        _inputs["Spoilers"] = new Param(_description[0].c_str(), _supported, _enabled);
+        _inputs_order.push_back("differentialSpoiler");
+        _inputs["differentialSpoiler"] = new Param("Is the spoiler differential?", "Differential spoilers are used for faster roll rate", _differential);
     }
     ~Spoilers() {}
 
@@ -201,7 +211,8 @@ class Speedbrake : public System
 public:
     Speedbrake(Aeromatic *p) : System(p) {
         _description.push_back("Speedbrake");
-        _inputs.push_back(new Param(_description[0].c_str(), _supported, _enabled));
+        _inputs_order.push_back("Speedbrake");
+        _inputs["Speedbrake"]  = new Param(_description[0].c_str(), _supported, _enabled);
     }
     ~Speedbrake() {}
 
@@ -219,7 +230,8 @@ class ThrustReverse : public System
 public:
     ThrustReverse(Aeromatic *p) : System(p) {
         _description.push_back("Thrust Reverse");
-        _inputs.push_back(new Param(_description[0].c_str(), _supported, _enabled));
+        _inputs_order.push_back("Thrust Reverse");
+        _inputs["Thrust Reverse"] = new Param(_description[0].c_str(), _supported, _enabled);
     }
     ~ThrustReverse() {}
 
@@ -232,7 +244,8 @@ class Chute : public System
 public:
     Chute(Aeromatic *p) : System(p) {
         _description.push_back("Chute");
-        _inputs.push_back(new Param(_description[0].c_str(), _supported, _enabled));
+        _inputs_order.push_back("Chute");
+        _inputs["Chute"] = new Param(_description[0].c_str(), _supported, _enabled);
     }
     ~Chute() {}
 
@@ -269,7 +282,8 @@ class Catapult : public System
 public:
     Catapult(Aeromatic *p) : System(p) {
         _description.push_back("Catapult");
-        _inputs.push_back(new Param(_description[0].c_str(), _supported, _enabled));
+        _inputs_order.push_back("Catapult");
+        _inputs["Catapult"] = new Param(_description[0].c_str(), _supported, _enabled);
     }
     ~Catapult() {}
 

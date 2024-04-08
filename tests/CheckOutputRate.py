@@ -36,24 +36,23 @@ class CheckOutputRate(JSBSimTestCase):
         # Read the time step 'dt' from the script file
         self.tree = et.parse(self.script_path)
         root = self.tree.getroot()
-        use_tag = root.find("./use")
+        use_tag = root.find('use')
         aircraft_name = use_tag.attrib['aircraft']
-        self.run_tag = root.find("./run")
+        self.run_tag = root.find('run')
         self.dt = float(self.run_tag.attrib['dt'])
 
         # Read the date at which the trim will be run
-        event_tags = root.findall('./run/event')
-        for event in event_tags:
+        for event in root.findall('run/event'):
             if event.attrib['name'] == 'Trim':
-                cond_tag = event.find('./condition')
-                self.trim_date = float(string.split(cond_tag.text)[-1])
+                cond_tag = event.find('condition')
+                self.trim_date = float(cond_tag.text.split()[-1])
                 break
 
         # Read the output rate and the output file from the aircraft file
         aircraft_path = self.sandbox.path_to_jsbsim_file('aircraft', aircraft_name,
                                                          append_xml(aircraft_name))
         tree = et.parse(aircraft_path)
-        output_tag = tree.getroot().find("./output")
+        output_tag = tree.getroot().find('output')
         self.output_file = output_tag.attrib['name']
         self.rateHz = float(output_tag.attrib['rate'])
         self.rate = int(1.0 / (self.rateHz * self.dt))
@@ -75,7 +74,7 @@ class CheckOutputRate(JSBSimTestCase):
 
         self.fdm.run_ic()
 
-        for i in xrange(self.rate):
+        for i in range(self.rate):
             self.fdm.run()
 
         output = pd.read_csv(self.output_file)
@@ -84,9 +83,9 @@ class CheckOutputRate(JSBSimTestCase):
         # addition to the headers :
         # 1. The initial conditions
         # 2. The output after 'rate' iterations
-        self.assertEqual(output['Time'].iget(0), 0.0)
-        self.assertEqual(output['Time'].iget(1), self.rate * self.dt)
-        self.assertEqual(output['Time'].iget(1),
+        self.assertEqual(output['Time'].iloc[0], 0.0)
+        self.assertEqual(output['Time'].iloc[1], self.rate * self.dt)
+        self.assertEqual(output['Time'].iloc[1],
                          self.fdm["simulation/sim-time-sec"])
 
     def testDisablingOutput(self):
@@ -97,7 +96,7 @@ class CheckOutputRate(JSBSimTestCase):
         self.fdm.run_ic()
         self.fdm["simulation/output/enabled"] = 1.0
 
-        for i in xrange(self.rate):
+        for i in range(self.rate):
             self.fdm.run()
 
         output = pd.read_csv(self.output_file)
@@ -105,7 +104,7 @@ class CheckOutputRate(JSBSimTestCase):
         # According to the settings, the output file must contain 1 line in
         # addition to the headers :
         # 1. The output after 'rate' iterations
-        self.assertEqual(output['Time'].iget(0),
+        self.assertEqual(output['Time'].iloc[0],
                          self.fdm["simulation/sim-time-sec"])
 
     def testTrimRestoresOutputSettings(self):
@@ -126,15 +125,15 @@ class CheckOutputRate(JSBSimTestCase):
         self.fdm["simulation/output/enabled"] = 1.0
         frame = int(self.fdm["simulation/frame"])
 
-        for i in xrange(self.rate):
+        for i in range(self.rate):
             self.fdm.run()
 
         output = pd.read_csv(self.output_file)
 
         # The frame at which the data is logged must be the next multiple of
         # the output rate
-        self.assertEqual(int(output['Time'].iget(0)/self.dt),
-                         (1 + frame/self.rate)*self.rate)
+        self.assertEqual(int(output['Time'].iloc[0] / self.dt),
+                         (1 + frame // self.rate)*self.rate)
 
     def testDisablingOutputInScript(self):
         property = et.SubElement(self.run_tag, 'property')
@@ -150,7 +149,7 @@ class CheckOutputRate(JSBSimTestCase):
         self.fdm.run_ic()
         self.fdm["simulation/output/enabled"] = 1.0
 
-        for i in xrange(self.rate):
+        for i in range(self.rate):
             self.fdm.run()
 
         output = pd.read_csv(self.output_file)
@@ -158,7 +157,7 @@ class CheckOutputRate(JSBSimTestCase):
         # According to the settings, the output file must contain 1 line in
         # addition to the headers :
         # 1. The output after 'rate' iterations
-        self.assertEqual(output['Time'].iget(0),
+        self.assertEqual(output['Time'].iloc[0],
                          self.fdm["simulation/sim-time-sec"])
 
 RunTest(CheckOutputRate)

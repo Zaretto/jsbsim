@@ -7,21 +7,21 @@
  ------------- Copyright (C) 2000 Anthony K. Peden -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -40,51 +40,44 @@ INCLUDES
 #include "FGKinemat.h"
 #include "input_output/FGXMLElement.h"
 #include "models/FGFCS.h"
-#include <iostream>
-#include <cstdlib>
+#include "input_output/FGLog.h"
 
 using namespace std;
 
 namespace JSBSim {
 
-IDENT(IdSrc,"$Id: FGKinemat.cpp,v 1.16 2016/06/12 14:47:46 bcoconni Exp $");
-IDENT(IdHdr,ID_FLAPS);
-
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-FGKinemat::FGKinemat(FGFCS* fcs, Element* element) : FGFCSComponent(fcs, element)
+FGKinemat::FGKinemat(FGFCS* fcs, Element* element)
+  : FGFCSComponent(fcs, element)
 {
-  Element *traverse_element, *setting_element;
-  double tmpDetent;
-  double tmpTime;
-
-  Detents.clear();
-  TransitionTimes.clear();
+  CheckInputNodes(1, 1, element);
 
   Output = 0;
   DoScale = true;
 
   if (element->FindElement("noscale")) DoScale = false;
 
-  traverse_element = element->FindElement("traverse");
-  setting_element = traverse_element->FindElement("setting");
+  Element* traverse_element = element->FindElement("traverse");
+  Element* setting_element = traverse_element->FindElement("setting");
   while (setting_element) {
-    tmpDetent = setting_element->FindElementValueAsNumber("position");
-    tmpTime = setting_element->FindElementValueAsNumber("time");
+    double tmpDetent = setting_element->FindElementValueAsNumber("position");
+    double tmpTime = setting_element->FindElementValueAsNumber("time");
     Detents.push_back(tmpDetent);
     TransitionTimes.push_back(tmpTime);
     setting_element = traverse_element->FindNextElement("setting");
   }
 
   if (Detents.size() <= 1) {
-    cerr << "Kinematic component " << Name
-         << " must have more than 1 setting element" << endl;
-    exit(-1);
+    XMLLogException err(fcs->GetExec()->GetLogger(), element);
+    err << "\nKinematic component " << Name
+        << " must have more than 1 setting element\n";
+    throw err;
   }
 
-  FGFCSComponent::bind();
+  bind(element, fcs->GetPropertyManager().get());
 
   Debug(0);
 }
@@ -102,11 +95,12 @@ bool FGKinemat::Run(void )
 {
   double dt0 = dt;
 
-  Input = InputNodes[0]->getDoubleValue() * InputSigns[0];
+  Input = InputNodes[0]->getDoubleValue();
 
   if (DoScale) Input *= Detents.back();
 
-  if (IsOutput) Output = OutputNodes[0]->getDoubleValue();
+  if (!OutputNodes.empty())
+    Output = OutputNodes[0]->getDoubleValue();
 
   Input = Constrain(Detents.front(), Input, Detents.back());
 
@@ -155,7 +149,7 @@ bool FGKinemat::Run(void )
   }
 
   Clip();
-  if (IsOutput) SetOutput();
+  SetOutput();
 
   return true;
 }
@@ -168,7 +162,7 @@ bool FGKinemat::Run(void )
 //       variable is not set, debug_lvl is set to 1 internally
 //    0: This requests JSBSim not to output any messages
 //       whatsoever.
-//    1: This value explicity requests the normal JSBSim
+//    1: This value explicitly requests the normal JSBSim
 //       startup messages
 //    2: This value asks for a message to be printed out when
 //       a class is instantiated
@@ -184,22 +178,22 @@ void FGKinemat::Debug(int from)
   if (debug_lvl <= 0) return;
 
   if (debug_lvl & 1) { // Standard console startup message output
+    FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
     if (from == 0) { // Constructor
-      cout << "      INPUT: " << InputNodes[0]->GetName() << endl;
-      cout << "      DETENTS: " << Detents.size() << endl;
+      log << "      INPUT: " << InputNodes[0]->GetName() << "\n";
+      log << "      DETENTS: " << Detents.size() << fixed << setprecision(4) << "\n";
       for (unsigned int i=0;i<Detents.size();i++) {
-        cout << "        " << Detents[i] << " " << TransitionTimes[i] << endl;
+        log << "        " << Detents[i] << " " << TransitionTimes[i] << "\n";
       }
-      if (IsOutput) {
-        for (unsigned int i=0; i<OutputNodes.size(); i++)
-          cout << "      OUTPUT: " << OutputNodes[i]->getName() << endl;
-      }
-      if (!DoScale) cout << "      NOSCALE" << endl;
+      for (auto node: OutputNodes)
+          log << "      OUTPUT: " << node->getNameString() << "\n";
+      if (!DoScale) log << "      NOSCALE\n";
     }
   }
   if (debug_lvl & 2 ) { // Instantiation/Destruction notification
-    if (from == 0) cout << "Instantiated: FGKinemat" << endl;
-    if (from == 1) cout << "Destroyed:    FGKinemat" << endl;
+    FGLogging log(fcs->GetExec()->GetLogger(), LogLevel::DEBUG);
+    if (from == 0) log << "Instantiated: FGKinemat\n";
+    if (from == 1) log << "Destroyed:    FGKinemat\n";
   }
   if (debug_lvl & 4 ) { // Run() method entry print for FGModel-derived objects
   }
@@ -209,8 +203,6 @@ void FGKinemat::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

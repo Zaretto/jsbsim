@@ -44,12 +44,6 @@ INCLUDES
 #include "input_output/FGfdmSocket.h"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_OUTPUTFG "$Id: FGOutputFG.h,v 1.3 2013/01/12 18:08:40 bcoconni Exp $"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
@@ -72,16 +66,26 @@ public:
   /// Constructor
   FGOutputFG(FGFDMExec* fdmex);
 
-  virtual void Print(void);
+  void Print(void) override;
+
+  /** Evaluate the output directives from an XML file.
+      @param element XML Element that is pointing to the output directives
+  */
+  bool Load(Element*) override;
 
 protected:
-  virtual void PrintHeaders(void) {};
+  void PrintHeaders(void) override {};
 
 private:
+
+  struct {
+    bool useSimTime;
+    double timeFactor;
+  } outputOptions;
+
   FGNetFDM fgSockBuf;
   void SocketDataFill(FGNetFDM* net);
 };
 }
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #endif
-

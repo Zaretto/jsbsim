@@ -42,12 +42,6 @@ INCLUDES
 #include "math/FGColumnVector3.h"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_XMLELEMENT "$Id: FGXMLElement.h,v 1.25 2015/07/12 19:34:08 bcoconni Exp $"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
@@ -137,7 +131,6 @@ CLASS DOCUMENTATION
     - GAL = gallon (U.S. liquid) 
 
     @author Jon S. Berndt
-    @version $Id: FGXMLElement.h,v 1.25 2015/07/12 19:34:08 bcoconni Exp $
 */
 
 class Element;
@@ -147,7 +140,7 @@ typedef SGSharedPtr<Element> Element_ptr;
 CLASS DECLARATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-class Element : public SGReferenced {
+class JSBSIM_API Element : public SGReferenced {
 public:
   /** Constructor
       @param nm the name of this element (if given)
@@ -184,6 +177,7 @@ public:
   /** Retrieves the element name.
       @return the element name, or the empty string if no name has been set.*/
   const std::string& GetName(void) const {return name;}
+  void ChangeName(const std::string& _name) { name = _name; }
 
   /** Gets a line of data belonging to an element.
       @param i the index of the data line to return (0 by default).
@@ -279,6 +273,16 @@ public:
               data is missing. */
   double FindElementValueAsNumber(const std::string& el="");
 
+  /** Searches for the named element and returns the data belonging to it as a bool.
+      This function allows the data belonging to a named element to be returned
+      as a bool. If no element is found, false is returned. If no
+      argument is supplied, the data for the first element is returned.
+      @param el the name of the element being searched for (the empty string by
+      default)
+      @return the data value for the named element as a bool, or false if the
+              data is missing. Zero will be false, while any other number will be true. */
+  bool FindElementValueAsBoolean(const std::string& el="");
+  
   /** Searches for the named element and converts and returns the data belonging to it.
       This function allows the data belonging to a named element to be returned
       as a double. If no element is found, HUGE_VAL is returned. If no

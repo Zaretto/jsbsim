@@ -8,20 +8,21 @@
  ------------- Copyright (C) 1999  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
- This program is distributed in the hope that it will be useful, but WITHOUT
- ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
- FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more details.
+ This program is distributed in the hope that it will be useful, but WITHOUT ANY
+ WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+ PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
+ details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 FUNCTIONAL DESCRIPTION
 --------------------------------------------------------------------------------
@@ -37,35 +38,24 @@ HISTORY
 INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-#include <iostream>
-#include <fstream>
-#include <cstdlib>
-
 #include "FGEngine.h"
-#include "FGTank.h"
 #include "FGPropeller.h"
 #include "FGNozzle.h"
 #include "FGRotor.h"
 #include "input_output/FGXMLElement.h"
-#include "math/FGColumnVector3.h"
 
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGEngine.cpp,v 1.67 2015/09/27 09:54:21 bcoconni Exp $");
-IDENT(IdHdr,ID_ENGINE);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 FGEngine::FGEngine(int engine_number, struct Inputs& input)
-                      : in(input), EngineNumber(engine_number)
+  : in(input), EngineNumber(engine_number)
 {
   Type = etUnknown;
-  X = Y = Z = 0.0;
-  EnginePitch = EngineYaw = 0.0;
   SLFuelFlowMax = 0.0;
   FuelExpended = 0.0;
   MaxThrottle = 1.0;
@@ -121,18 +111,6 @@ unsigned int FGEngine::GetSourceTank(unsigned int i) const
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-void FGEngine::SetPlacement(const FGColumnVector3& location,
-                            const FGColumnVector3& orientation)
-{
-  X = location(eX);
-  Y = location(eY);
-  Z = location(eZ);
-  EnginePitch = orientation(ePitch);
-  EngineYaw = orientation (eYaw);
-}
-
-//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
 double FGEngine::GetThrust(void) const 
 {
   return Thruster->GetThrust();
@@ -158,7 +136,7 @@ void FGEngine::LoadThrusterInputs()
 {
   Thruster->in.TotalDeltaT     = in.TotalDeltaT;
   Thruster->in.H_agl           = in.H_agl;
-  Thruster->in.PQR             = in.PQR;
+  Thruster->in.PQRi            = in.PQRi;
   Thruster->in.AeroPQR         = in.AeroPQR;
   Thruster->in.AeroUVW         = in.AeroUVW;
   Thruster->in.Density         = in.Density;
@@ -201,25 +179,24 @@ bool FGEngine::Load(FGFDMExec *exec, Element *engine_element)
   Element* local_element;
   FGColumnVector3 location, orientation;
 
-  FGPropertyManager* PropertyManager = exec->GetPropertyManager();
+  auto PropertyManager = exec->GetPropertyManager();
 
   Name = engine_element->GetAttributeValue("name");
 
-  FGModelFunctions::Load(engine_element, PropertyManager, to_string((int)EngineNumber)); // Call ModelFunctions loader
+  // Call ModelFunctions loader
+  FGModelFunctions::Load(engine_element, exec, to_string((int)EngineNumber));
 
-// Find and set engine location
-
+  // If engine location and/or orientation is supplied issue a warning since they
+  // are ignored. What counts is the location and orientation of the thruster.
   local_element = parent_element->FindElement("location");
-  if (local_element)  location = local_element->FindElementTripletConvertTo("IN");
-//  else      cerr << "No engine location found for this engine." << endl;
-// Jon: The engine location is not important - the nozzle location is.
+  if (local_element)
+    cerr << local_element->ReadFrom()
+         << "Engine location ignored, only thruster location is used." << endl;
 
   local_element = parent_element->FindElement("orient");
-  if (local_element)  orientation = local_element->FindElementTripletConvertTo("RAD");
-//  else          cerr << "No engine orientation found for this engine." << endl;
-// Jon: The engine orientation has a default and is not normally used.
-
-  SetPlacement(location, orientation);
+  if (local_element)
+    cerr << local_element->ReadFrom()
+         << "Engine orientation ignored, only thruster orientation is used." << endl;
 
   // Load thruster
   local_element = parent_element->FindElement("thruster");
@@ -257,7 +234,7 @@ bool FGEngine::Load(FGFDMExec *exec, Element *engine_element)
   property_name = base_property_name + "/fuel-used-lbs";
   PropertyManager->Tie( property_name.c_str(), this, &FGEngine::GetFuelUsedLbs);
 
-  PostLoad(engine_element, PropertyManager, to_string((int)EngineNumber));
+  PostLoad(engine_element, exec, to_string((int)EngineNumber));
 
   Debug(0);
 
@@ -311,8 +288,6 @@ void FGEngine::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

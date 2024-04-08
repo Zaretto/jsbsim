@@ -7,21 +7,21 @@
  ------------- Copyright (C) 1999  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 HISTORY
 --------------------------------------------------------------------------------
@@ -48,12 +48,6 @@ INCLUDES
 #include "math/FGMatrix33.h"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_AERODYNAMICS "$Id: FGAerodynamics.h,v 1.30 2014/09/03 17:26:28 bcoconni Exp $"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
@@ -69,7 +63,8 @@ CLASS DOCUMENTATION
     as ground effect, aerodynamic reference point shift, and maximum lift curve
     tailoff are handled.
 
-    @code
+    <h3>Configuration File Format for \<aerodynamics> Section:</h3>
+    @code{.xml}
     <aerodynamics>
        <alphalimits unit="{RAD | DEG}">
          <min> {number} </min>
@@ -96,12 +91,12 @@ CLASS DOCUMENTATION
 
     Optionally two other coordinate systems may be used.<br><br>
     1) Body coordinate system:
-    @code
+    @code{.xml}
        <axis name="{X | Y | Z}">
     @endcode
     <br>
     2) Axial-Normal coordinate system:
-    @code
+    @code{.xml}
        <axis name="{AXIAL | NORMAL | SIDE}">
     @endcode
     <br>
@@ -115,7 +110,7 @@ CLASS DOCUMENTATION
 CLASS DECLARATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-class FGAerodynamics : public FGModel
+class JSBSIM_API FGAerodynamics : public FGModel
 {
 
 public:
@@ -123,9 +118,9 @@ public:
       @param Executive a pointer to the parent executive object */
   FGAerodynamics(FGFDMExec* Executive);
   /// Destructor
-  ~FGAerodynamics();
+  ~FGAerodynamics() override;
 
-  bool InitModel(void);
+  bool InitModel(void) override;
 
   /** Runs the Aerodynamics model; called by the Executive
       Can pass in a value indicating if the executive is directing the simulation to Hold.
@@ -134,14 +129,14 @@ public:
                      model, which may need to be active to listen on a socket for the
                      "Resume" command to be given.
       @return false if no error */
-  bool Run(bool Holding);
+  bool Run(bool Holding) override;
 
   /** Loads the Aerodynamics model.
       The Load function for this class expects the XML parser to
       have found the aerodynamics keyword in the configuration file.
       @param element pointer to the current XML element for aerodynamics parameters.
       @return true if successful */
-  bool Load(Element* element);
+  bool Load(Element* element) override;
 
   /** Gets the total aerodynamic force vector.
       @return a force vector reference. */
@@ -180,6 +175,34 @@ public:
       @return a reference to a column vector containing the requested wind
       axis force. */
   double GetvFw(int axis) const { return vFw(axis); }
+
+  /** Retrieves the aerodynamic forces in the stability axes.
+  @return a reference to a column vector containing the stability axis forces. */
+  FGColumnVector3 GetForcesInStabilityAxes(void) const;
+
+  /** Retrieves the aerodynamic forces in the stability axes, given an axis.
+  @param axis the axis to return the force for (eX, eY, eZ).
+  @return a reference to a column vector containing the requested stability
+  axis force. */
+  double GetForcesInStabilityAxes(int n) const { return GetForcesInStabilityAxes()(n); }
+
+  /** Gets the total aerodynamic moment vector about the CG in the stability axes.
+  @return a moment vector reference. */
+  FGColumnVector3 GetMomentsInStabilityAxes(void) const { return Tb2s*vMoments; }
+
+  /** Gets the aerodynamic moment about the CG for an axis.
+  @return the moment about a single axis (as described also in the
+  similar call to GetForces(int n).*/
+  double GetMomentsInStabilityAxes(int n) const { return GetMomentsInStabilityAxes()(n); }
+
+  /** Gets the total aerodynamic moment vector about the CG in the wind axes.
+  @return a moment vector reference. */
+  FGColumnVector3 GetMomentsInWindAxes(void) const { return in.Tb2w*vMoments; }
+
+  /** Gets the aerodynamic moment about the CG for an axis.
+  @return the moment about a single axis (as described also in the
+  similar call to GetForces(int n).*/
+  double GetMomentsInWindAxes(int n) const { return GetMomentsInWindAxes()(n); }
 
   /** Retrieves the lift over drag ratio */
   double GetLoD(void) const { return lod; }
@@ -227,22 +250,22 @@ public:
   } in;
 
 private:
-    public:
-  enum eAxisType {atNone, atLiftDrag, atAxialNormal, atBodyXYZ} axisType;
+  enum eAxisType {atNone, atWind, atBodyAxialNormal, atBodyXYZ, atStability} forceAxisType, momentAxisType;
   typedef std::map<std::string,int> AxisIndex;
   AxisIndex AxisIdx;
   FGFunction* AeroRPShift;
   typedef std::vector <FGFunction*> AeroFunctionArray;
   AeroFunctionArray* AeroFunctions;
+  FGMatrix33 Ts2b, Tb2s;
   FGColumnVector3 vFnative;
   FGColumnVector3 vFw;
   FGColumnVector3 vForces;
   AeroFunctionArray* AeroFunctionsAtCG;
-  FGColumnVector3 vFwAtCG;
   FGColumnVector3 vFnativeAtCG;
   FGColumnVector3 vForcesAtCG;
   FGColumnVector3 vMoments;
   FGColumnVector3 vMomentsMRC;
+  FGColumnVector3 vMomentsMRCBodyXYZ;
   FGColumnVector3 vDXYZcg;
   FGColumnVector3 vDeltaRP;
   double alphaclmax, alphaclmin;
@@ -254,13 +277,16 @@ private:
 
   typedef double (FGAerodynamics::*PMF)(int) const;
   void DetermineAxisSystem(Element* document);
+  void ProcessAxesNameAndFrame(FGAerodynamics::eAxisType& axisType,
+                               const std::string& name, const std::string& frame,
+                               Element* el, const std::string& validNames);
   void bind(void);
+  void BuildStabilityTransformMatrices(void);
 
-  void Debug(int from);
+  void Debug(int from) override;
 };
 
 } // namespace JSBSim
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #endif
-

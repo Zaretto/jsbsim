@@ -42,6 +42,7 @@ INCLUDES
 #include <iostream>
 #include <sstream>
 
+#include "FGFDMExec.h"
 #include "FGElectric.h"
 #include "FGPropeller.h"
 #include "input_output/FGXMLElement.h"
@@ -49,9 +50,6 @@ INCLUDES
 using namespace std;
 
 namespace JSBSim {
-
-IDENT(IdSrc,"$Id: FGElectric.cpp,v 1.20 2015/09/27 09:54:21 bcoconni Exp $");
-IDENT(IdHdr,ID_ELECTRIC);
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS IMPLEMENTATION
@@ -92,14 +90,17 @@ void FGElectric::Calculate(void)
   if (Thruster->GetType() == FGThruster::ttPropeller) {
     ((FGPropeller*)Thruster)->SetAdvance(in.PropAdvance[EngineNumber]);
     ((FGPropeller*)Thruster)->SetFeather(in.PropFeather[EngineNumber]);
-  } 
+  }
 
   RPM = Thruster->GetRPM() * Thruster->GetGearRatio();
 
   HP = PowerWatts * in.ThrottlePos[EngineNumber] / hptowatts;
-  
+
   LoadThrusterInputs();
-  Thruster->Calculate(HP * hptoftlbssec);
+  // Filters out negative powers when the propeller is not rotating.
+  double power = HP * hptoftlbssec;
+  if (RPM <= 0.1) power = max(power, 0.0);
+  Thruster->Calculate(power);
 
   RunPostFunctions();
 }
@@ -179,8 +180,6 @@ void FGElectric::Debug(int from)
   }
   if (debug_lvl & 64) {
     if (from == 0) { // Constructor
-      cout << IdSrc << endl;
-      cout << IdHdr << endl;
     }
   }
 }

@@ -7,21 +7,21 @@
  ------------- Copyright (C) 1999  Jon S. Berndt (jon@jsbsim.org) -------------
 
  This program is free software; you can redistribute it and/or modify it under
- the terms of the GNU Lesser General Public License as published by the Free Software
- Foundation; either version 2 of the License, or (at your option) any later
- version.
+ the terms of the GNU Lesser General Public License as published by the Free
+ Software Foundation; either version 2 of the License, or (at your option) any
+ later version.
 
  This program is distributed in the hope that it will be useful, but WITHOUT
  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
  FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more
  details.
 
- You should have received a copy of the GNU Lesser General Public License along with
- this program; if not, write to the Free Software Foundation, Inc., 59 Temple
- Place - Suite 330, Boston, MA  02111-1307, USA.
+ You should have received a copy of the GNU Lesser General Public License along
+ with this program; if not, write to the Free Software Foundation, Inc., 59
+ Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
- Further information about the GNU Lesser General Public License can also be found on
- the world wide web at http://www.gnu.org.
+ Further information about the GNU Lesser General Public License can also be
+ found on the world wide web at http://www.gnu.org.
 
 HISTORY
 --------------------------------------------------------------------------------
@@ -42,12 +42,6 @@ INCLUDES
 
 #include "FGModel.h"
 #include "input_output/FGOutputType.h"
-
-/*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-DEFINITIONS
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-
-#define ID_OUTPUT "$Id: FGOutput.h,v 1.33 2015/08/23 09:43:31 bcoconni Exp $"
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 FORWARD DECLARATIONS
@@ -79,8 +73,9 @@ CLASS DOCUMENTATION
                   defining the socket are given on the \<output> line.
       TABULAR     Columnar data.
       TERMINAL    Output to terminal. NOT IMPLEMENTED YET!
-      NONE        Specifies to do nothing. This setting makes it easy to turn on and
-                  off the data output without having to mess with anything else.
+      NONE        Specifies to do nothing. This setting makes it easy to turn on
+                  and off the data output without having to mess with anything
+                  else.
 
       Examples:
 </pre>
@@ -97,9 +92,9 @@ CLASS DOCUMENTATION
 <pre>
     The arguments that can be supplied, currently, are:
 
-    RATE_IN_HZ  An integer rate in times-per-second that the data is output. This
-                value may not be *exactly* what you want, due to the dependence
-                on dt, the cycle rate for the FDM.
+    RATE_IN_HZ  An integer rate in times-per-second that the data is output.
+                This value may not be *exactly* what you want, due to the
+                dependence on dt, the cycle rate for the FDM.
 
     The following parameters tell which subsystems of data to output:
 
@@ -121,18 +116,17 @@ CLASS DOCUMENTATION
 
     The class FGOutput is the manager of the outputs requested by the user. It
     manages a list of instances derived from the abstract class FGOutputType.
-    @version $Id: FGOutput.h,v 1.33 2015/08/23 09:43:31 bcoconni Exp $
  */
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 CLASS DECLARATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
-class FGOutput : public FGModel
+class JSBSIM_API FGOutput : public FGModel
 {
 public:
   FGOutput(FGFDMExec*);
-  ~FGOutput();
+  ~FGOutput() override;
 
   /** Initializes the instance. This method is called by FGFDMExec::RunIC().
       This is were the initialization of all classes derived from FGOutputType
@@ -140,7 +134,7 @@ public:
       to FGFDMExec::RunIC() so that the initialization process can be executed
       properly.
       @result true if the execution succeeded. */
-  bool InitModel(void);
+  bool InitModel(void) override;
   /** Runs the Output model; called by the Executive.
       Can pass in a value indicating if the executive is directing the
       simulation to Hold.
@@ -149,7 +143,7 @@ public:
                      as the Input model, which may need to be active to listen
                      on a socket for the "Resume" command to be given.
       @return false if no error */
-  bool Run(bool Holding);
+  bool Run(bool Holding) override;
   /** Makes all the output instances to generate their ouput. This method does
       not check that the time step at which the output is requested is
       consistent with the output rate RATE_IN_HZ. Although Print is not a
@@ -181,7 +175,7 @@ public:
       @param fname the name of the file from which the ouput directives should
                    be read.
       @return true if the execution succeeded. */
-  bool SetDirectivesFile(const std::string& fname);
+  bool SetDirectivesFile(const SGPath& fname);
   /// Enables the output generation for all output instances.
   void Enable(void) { enabled = true; }
   /// Disables the output generation for all output instances.
@@ -199,8 +193,10 @@ public:
   /** Load the output directives and adds a new output instance to the Output
       Manager list.
       @param el XMLElement that is pointing to the output directives
+      @param dir optional directory path to load included files from
       @result true if the execution succeeded. */
-  bool Load(Element* el);
+  bool Load(Element* el, const SGPath& dir);
+  bool Load(Element* el) override { return Load(el, SGPath()); }
   /** Load the output directives and adds a new output instance to the Output
       Manager list. Unlike the Load() method, the new output instance is not
       generated from output directives read in a XML file but from a list of
@@ -215,20 +211,22 @@ public:
       @result true if the execution succeeded. */
   bool Load(int subSystems, std::string protocol, std::string type,
             std::string port, std::string name, double outRate,
-            std::vector<FGPropertyNode_ptr> & outputProperties);
+            std::vector<SGPropertyNode_ptr> & outputProperties);
   /** Get the name identifier to which the output will be directed.
       @param idx ID of the output instance from which the name identifier must
                  be obtained
       @result the name identifier.*/
   std::string GetOutputName(unsigned int idx) const;
 
+  SGPath FindFullPathName(const SGPath& path) const override;
+
 private:
   std::vector<FGOutputType*> OutputTypes;
   bool enabled;
+  SGPath includePath;
 
-  void Debug(int from);
+  void Debug(int from) override;
 };
 }
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 #endif
-
