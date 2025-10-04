@@ -403,6 +403,9 @@ bool FGFDMExec::DeAllocate(void)
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+extern "C" {
+int DCS__active = 1;
+}
 
 bool FGFDMExec::Run(void)
 {
@@ -421,31 +424,37 @@ bool FGFDMExec::Run(void)
   if (Script && !IntegrationSuspended()) success = Script->RunScript();
 
   for (unsigned int i = 0; i < Models.size(); i++) {
-    switch (i) { 
-      // For DCS we only need a subset of the models to run.
-      //      case  eAtmosphere:
-      //      case  eAuxiliary:
-      //      case  eBuoyantForces:
-      //      case  eInertial:
-      //      case  ePropagate:
-      //      case  eWinds:
-      case eAccelerations:
-      case eAerodynamics:
-      case eAircraft:
-      case eExternalReactions:
-      case eGroundReactions:
-      case eInput:
-      case eMassBalance:
-      case eOutput:
-      case ePropulsion:
-      case eSystems:
+      if (DCS__active) {
+          switch (i) {
+          // For DCS we only need a subset of the models to run.
+          // case ePropagate:
+          case eInput:
+          // case eInertial:
+          // case eAtmosphere:
+          // case eWinds:
+          case eSystems:
+          case eMassBalance:
+          // case eAuxiliary:
+          case ePropulsion:
+          case eAerodynamics:
+          case eGroundReactions:
+          case eExternalReactions:
+          // case eBuoyantForces:
+          case eAircraft:
+          case eAccelerations:
+          case eOutput:
+              // case eNumStandardModels:
+              LoadInputs(i);
+              Models[i]->Run(holding);
+              break;
+
+          default:
+              break;
+          }
+      } else {
           LoadInputs(i);
           Models[i]->Run(holding);
-          break;
-
-    default:
-        break; // For DCS we only need a subset of the models to run.
-    }
+      }
   }
 
   if (Terminate) success = false;
