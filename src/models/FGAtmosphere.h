@@ -137,6 +137,8 @@ public:
   virtual void SetTemperature(double t, double h, eTemperature unit=eFahrenheit) = 0;
   //@}
 
+  virtual void SetSoundSpeed(double v) { Soundspeed = v; }
+
   //  *************************************************************************
   /// @name Pressure access functions.
   //@{
@@ -171,6 +173,7 @@ public:
 
   /// Returns the sea level density in slugs/ft^3
   virtual double GetDensitySL(void)  const { return SLdensity; }
+  virtual void SetDensitySL(double v) { SLdensity = v; }
 
   /// Returns the ratio of at-altitude density over the sea level value.
   virtual double GetDensityRatio(void) const { return Density/SLdensity; }

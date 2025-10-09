@@ -290,6 +290,19 @@ public:
   const FGColumnVector3& GetNEUPositionFromStart() const;
 
   void SetAeroPQR(const FGColumnVector3& tt) { vAeroPQR = tt; }
+  void SetVtrueFPS(double v) { Vt = v; }
+  void SetQBar(double v) { qbar = v; }
+  void SetVcas(double v) { vcas = v; }
+  void SetMach(double v) { Mach = v; }
+  void SetAlpha(double v) { alpha = v; }
+  void SetBeta(double v) { beta = v; }
+  void Setadot(double v) { adot = v; }
+  void Setbdot(double v) { bdot = v; }
+  void SetNx(double v) { Nx = v; }
+  void SetNy(double v) { Ny = v; }
+  void SetNz(double v) { Nz = v; }
+
+  void UpdateWindMatrices(void);
 
   struct Inputs {
     double Pressure;
@@ -356,8 +369,6 @@ private:
   double Nx, Ny, Nz;
 
   double hoverbcg, hoverbmac;
-
-  void UpdateWindMatrices(void);
 
   void CalculateRelativePosition(void);
 
