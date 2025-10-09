@@ -697,8 +697,5 @@
     <ClInclude Include="src\models\atmosphere\MSIS\nrlmsise-00.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="src\input_output\FGLog.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
 </Project>
