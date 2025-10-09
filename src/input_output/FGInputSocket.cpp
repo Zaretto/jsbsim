@@ -196,12 +196,16 @@ void FGInputSocket::Read(bool Holding)
           socket->Reply("Unknown property\r\n");
           break;
         } else if (!node->hasValue()) {
-          if (Holding) { // if holding can query property list
-            string query = FDMExec->QueryPropertyCatalog(argument, "\r\n");
+            auto holding = Holding;
+            if (!Holding)
+                FDMExec->Hold();
+            // if holding can query property list
+            if (argument == std::string("//"))
+                argument = "/";
+            string query = FDMExec->QueryPropertyCatalog(argument);
             socket->Reply(query);
-          } else {
-            socket->Reply("Must be in HOLD to search properties\r\n");
-          }
+            if (!holding)
+                FDMExec->Resume();
         } else {
           ostringstream buf;
           buf << argument << " = " << setw(12) << setprecision(6) << node->getDoubleValue() << '\r' << endl;
