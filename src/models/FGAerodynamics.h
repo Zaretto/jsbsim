@@ -218,6 +218,8 @@ public:
 
   double GetBI2Vel(void) const { return bi2vel; }
   double GetCI2Vel(void) const { return ci2vel; }
+  void SetBI2Vel(double v) { bi2vel = v; }
+  void SetCI2Vel(double v) { ci2vel = v; }
 
   void SetAlphaCLMax(double tt) { alphaclmax=tt; }
   void SetAlphaCLMin(double tt) { alphaclmin=tt; }
