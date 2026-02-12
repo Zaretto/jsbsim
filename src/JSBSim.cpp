@@ -91,6 +91,10 @@ SGPath ScriptName;
 string AircraftName;
 SGPath ResetName;
 SGPath PlanetName;
+string AircraftPathOverride;
+string EnginePathOverride;
+string SystemsPathOverride;
+string InitPathOverride;
 vector <string> LogOutputName;
 vector <SGPath> LogDirectiveName;
 vector <string> CommandLineProperties;
@@ -393,10 +397,12 @@ int real_main(int argc, char* argv[])
   // *** SET UP JSBSIM *** //
   FDMExec = new JSBSim::FGFDMExec();
   FDMExec->SetRootDir(RootDir);
-  FDMExec->SetAircraftPath(SGPath("aircraft"));
-  FDMExec->SetEnginePath(SGPath("engine"));
-  FDMExec->SetSystemsPath(SGPath("systems"));
+  FDMExec->SetAircraftPath(SGPath(AircraftPathOverride.empty() ? "aircraft" : AircraftPathOverride));
+  FDMExec->SetEnginePath(SGPath(EnginePathOverride.empty() ? "engine" : EnginePathOverride));
+  FDMExec->SetSystemsPath(SGPath(SystemsPathOverride.empty() ? "systems" : SystemsPathOverride));
   FDMExec->SetOutputPath(OutputPath);
+  if (!AircraftPathOverride.empty()) FDMExec->SetAddModelToPath(false);
+  if (!InitPathOverride.empty()) FDMExec->SetInitPath(SGPath(InitPathOverride));
   FDMExec->GetPropertyManager()->Tie("simulation/frame_start_time", &actual_elapsed_time);
   FDMExec->GetPropertyManager()->Tie("simulation/cycle_duration", &cycle_duration);
 
@@ -461,9 +467,9 @@ int real_main(int argc, char* argv[])
 
     if (catalog) FDMExec->SetDebugLevel(0);
 
-    if ( ! FDMExec->LoadModel(SGPath("aircraft"),
-                              SGPath("engine"),
-                              SGPath("systems"),
+    if ( ! FDMExec->LoadModel(SGPath(AircraftPathOverride.empty() ? "aircraft" : AircraftPathOverride),
+                              SGPath(EnginePathOverride.empty() ? "engine" : EnginePathOverride),
+                              SGPath(SystemsPathOverride.empty() ? "systems" : SystemsPathOverride),
                               AircraftName)) {
       cerr << "  JSBSim could not be started" << endl << endl;
       delete FDMExec;
@@ -721,6 +727,34 @@ bool options(int count, char **arg)
         gripe;
         exit(1);
       }
+    } else if (keyword == "--aircraft-path") {
+      if (n != string::npos) {
+        AircraftPathOverride = value;
+      } else {
+        gripe;
+        exit(1);
+      }
+    } else if (keyword == "--engine-path") {
+      if (n != string::npos) {
+        EnginePathOverride = value;
+      } else {
+        gripe;
+        exit(1);
+      }
+    } else if (keyword == "--systems-path") {
+      if (n != string::npos) {
+        SystemsPathOverride = value;
+      } else {
+        gripe;
+        exit(1);
+      }
+    } else if (keyword == "--init-path") {
+      if (n != string::npos) {
+        InitPathOverride = value;
+      } else {
+        gripe;
+        exit(1);
+      }
     } else if (keyword == "--aircraft") {
       if (n != string::npos) {
         AircraftName = value;
@@ -852,6 +886,12 @@ void PrintHelp(void)
     cout << "    --help  returns this message" << endl;
     cout << "    --version  returns the version number" << endl;
     cout << "    --root=<path>  specifies the JSBSim root directory (where aircraft/, engine/, etc. reside)" << endl;
+    cout << "    --aircraft-path=<path>  overrides the aircraft directory (default: aircraft)" << endl;
+    cout << "                            also disables the model-name subdirectory convention" << endl;
+    cout << "    --engine-path=<path>  overrides the engine directory (default: engine)" << endl;
+    cout << "    --systems-path=<path>  overrides the systems directory (default: systems)" << endl;
+    cout << "    --init-path=<path>  overrides the initialization file directory" << endl;
+    cout << "                        (default: same as aircraft directory)" << endl;
     cout << "    --aircraft=<filename>  specifies the name of the aircraft to be modeled" << endl;
     cout << "    --script=<filename>  specifies a script to run" << endl;
     cout << "    --initfile=<filename>  specifies an initialization file" << endl;
