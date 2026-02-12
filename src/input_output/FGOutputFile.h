@@ -99,10 +99,16 @@ public:
       FGFDMExec::RunIC(). If it is called after, it will not take effect before
       the next call to SetStartNewOutput().
       @param name new name */
-  void SetOutputName(const std::string& fname) override {
-    Name = (FDMExec->GetOutputPath()/fname).utf8Str();
-    runID_postfix = -1;
-    Filename = SGPath();
+  void SetOutputName(const std::string& fname) override
+  {
+      SGPath p(fname);
+      // ensure that if the path is already absolute we don't break it by adding
+      if (p.isAbsolute())
+          Name = fname;
+      else
+          Name = (FDMExec->GetOutputPath() / fname).utf8Str();
+      runID_postfix = -1;
+      Filename = SGPath();
   }
   /** Generate the output. This is a pure method so it must be implemented by
       the classes that inherits from FGOutputFile.
