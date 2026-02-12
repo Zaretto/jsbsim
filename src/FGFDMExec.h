@@ -350,6 +350,25 @@ public:
     return true;
   }
 
+  /** Set the path where initialization files are found.
+      When set, init file names from scripts are resolved relative to this
+      path instead of relative to the aircraft directory.
+      Relative paths are taken from the root directory.
+      @param path path to the directory containing init files.
+      @see GetInitPath */
+  bool SetInitPath(const SGPath& path) {
+    InitPath = GetFullPath(path);
+    return true;
+  }
+
+  /** Control whether the aircraft model name is appended as a subdirectory
+      when resolving the aircraft config file path.
+      When true (default), LoadModel("x15") looks for aircraft/x15/x15.xml.
+      When false, LoadModel("x15") looks for <AircraftPath>/x15.xml directly.
+      Use this when the aircraft files are not in the standard JSBSim
+      directory layout. */
+  void SetAddModelToPath(bool value) { AddModelToPath = value; }
+
   /// @name Top-level executive State and Model retrieval mechanism
   ///@{
   /// Returns the FGAtmosphere pointer.
@@ -400,6 +419,11 @@ public:
   const SGPath& GetSystemsPath(void) { return SystemsPath; }
   /// Retrieves the full aircraft path name.
   const SGPath& GetFullAircraftPath(void) { return FullAircraftPath; }
+  /// Retrieves the initialization file path. Returns InitPath if set,
+  /// otherwise falls back to FullAircraftPath.
+  const SGPath& GetInitPath(void) {
+    return InitPath.isNull() ? FullAircraftPath : InitPath;
+  }
   /// Retrieves the path to the output files.
   const SGPath& GetOutputPath(void) { return OutputPath; }
 
@@ -646,9 +670,11 @@ private:
   bool Constructing;
   bool modelLoaded;
   bool IsChild;
+  bool AddModelToPath;
   std::string modelName;
   SGPath AircraftPath;
   SGPath FullAircraftPath;
+  SGPath InitPath;
   SGPath EnginePath;
   SGPath SystemsPath;
   SGPath OutputPath;

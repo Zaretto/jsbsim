@@ -1010,7 +1010,7 @@ bool FGInitialCondition::Load(const SGPath& rstfile, bool useAircraftPath)
 {
   SGPath init_file_name;
   if(useAircraftPath && rstfile.isRelative()) {
-    init_file_name = fdmex->GetFullAircraftPath()/rstfile.utf8Str();
+    init_file_name = fdmex->GetInitPath()/rstfile.utf8Str();
   } else {
     init_file_name = rstfile;
   }
