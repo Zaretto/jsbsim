@@ -247,6 +247,13 @@ public:
       @return true if successful, false if sim should be ended  */
   bool Run(void);
 
+  /** Execute only the specified models, in the order given.
+      Each model gets LoadInputs() then Run(). Models not in the list are
+      skipped entirely. Use eModels enum values for the indices.
+      @param selectedModels vector of model indices to execute
+      @return true if successful, false if sim should be ended  */
+  bool Run(const std::vector<int>& selectedModels);
+
   /** Initializes the sim from the initial condition object and executes
       each scheduled model without integrating i.e. dt=0.
       @return true if successful */
