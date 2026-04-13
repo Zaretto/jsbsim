@@ -119,6 +119,12 @@ FORWARD DECLARATIONS
 
 bool options(int, char**);
 int real_main(int argc, char* argv[]);
+
+// Defined in FGFDMExec.cpp.  Global DCS/standalone-mode flag: when non-zero
+// the bridge runs JSBSim via the selective-model Run(dcsModels) path instead
+// of the full standalone Run() pipeline.  real_main honours this flag too so
+// scripted tests can reproduce bridge-mode execution without DCS.
+extern "C" { extern int DCS__active; }
 void PrintHelp(void);
 
 #if defined(__BORLANDC__) || defined(_MSC_VER) || defined(__MINGW32__)
@@ -608,7 +614,36 @@ int real_main(int argc, char* argv[])
        << "---- JSBSim Execution beginning ... --------------------------------------------"
        << JSBSim::FGFDMExec::reset << endl << endl;
 
-  result = FDMExec->Run();  // MAKE AN INITIAL RUN
+  // Bridge-test support: when DCS__active==1, run JSBSim via the same selective
+  // model subset the acEFM bridge uses at runtime (Run(const vector<int>&)) so
+  // scripted tests can reproduce the bridge execution path without DCS.
+  //
+  // KEEP IN SYNC WITH dcsModels in
+  // flyt-EFM-dcsJSBSim/JSBSim_interface.cpp:589.
+  //
+  // Skipped: ePropagate (DCS integrates state), eInertial, eWinds, eBuoyantForces.
+  // Run: eAtmosphere, eInput, eSystems, eMassBalance, eAuxiliary, ePropulsion,
+  //      eAerodynamics, eGroundReactions, eExternalReactions, eAircraft,
+  //      eAccelerations, eOutput.
+  const std::vector<int> dcsModels = {
+    JSBSim::FGFDMExec::eAtmosphere,
+    JSBSim::FGFDMExec::eInput,
+    JSBSim::FGFDMExec::eSystems,
+    JSBSim::FGFDMExec::eMassBalance,
+    JSBSim::FGFDMExec::eAuxiliary,
+    JSBSim::FGFDMExec::ePropulsion,
+    JSBSim::FGFDMExec::eAerodynamics,
+    JSBSim::FGFDMExec::eGroundReactions,
+    JSBSim::FGFDMExec::eExternalReactions,
+    JSBSim::FGFDMExec::eAircraft,
+    JSBSim::FGFDMExec::eAccelerations,
+    JSBSim::FGFDMExec::eOutput,
+  };
+  auto stepOnce = [&]() -> bool {
+    return DCS__active ? FDMExec->Run(dcsModels) : FDMExec->Run();
+  };
+
+  result = stepOnce();  // MAKE AN INITIAL RUN
 
   if (suspend) FDMExec->Hold();
 
@@ -635,7 +670,7 @@ int real_main(int argc, char* argv[])
     if ( ! FDMExec->Holding()) {
       if ( ! realtime ) {         // ------------ RUNNING IN BATCH MODE
 
-        result = FDMExec->Run();
+        result = stepOnce();
 
         if (play_nice) sim_nsleep(sleep_nseconds);
       } else {                    // ------------ RUNNING IN REALTIME MODE
@@ -646,7 +681,7 @@ int real_main(int argc, char* argv[])
         double cycle_start = getcurrentseconds();
 
         for (int i=0; i<(int)(sim_lag_time/frame_duration); i++) {  // catch up sim time to actual elapsed time.
-          result = FDMExec->Run();
+          result = stepOnce();
           cycle_duration = getcurrentseconds() - cycle_start;   // Calculate cycle duration
           cycle_start = getcurrentseconds();                    // Get new current_seconds
           if (FDMExec->Holding()) break;
@@ -663,7 +698,7 @@ int real_main(int argc, char* argv[])
     } else { // Suspended
       timer.pause(true);
       sim_nsleep(sleep_nseconds);
-      result = FDMExec->Run();
+      result = stepOnce();
     }
 
   }

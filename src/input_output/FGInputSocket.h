@@ -73,6 +73,13 @@ public:
   */
   bool Load(Element* el) override;
 
+  /** Get the port number assigned to this input socket.
+      @return the port number, or 0 if not yet loaded. */
+  unsigned int GetPort(void) const { return SockPort; }
+
+  /** Get the protocol type assigned to this input socket. */
+  FGfdmSocket::ProtocolType GetProtocol(void) const { return SockProtocol; }
+
   /** Initializes the instance. This method basically opens the socket to which
       inputs will be directed.
       @result true if the execution succeeded.
