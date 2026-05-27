@@ -171,6 +171,17 @@ bool FGScript::LoadScript(const SGPath& script, double default_dT,
 
   FDMExec->Setdt(dt);
 
+  // Parse optional model subset specification
+  if (run_element->HasAttribute("models")) {
+    string modelStr = run_element->GetAttributeValue("models");
+    auto models = FGFDMExec::ParseModelList(modelStr);
+    if (!models.empty()) {
+      FDMExec->SetSelectedModels(models);
+      cout << endl << "Script specifies selective model execution (" << models.size()
+           << " models)." << endl;
+    }
+  }
+
   // Make sure that the desired time is reached and executed.
   EndTime += 0.99*FDMExec->GetDeltaT();
 

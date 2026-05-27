@@ -254,6 +254,22 @@ public:
       @return true if successful, false if sim should be ended  */
   bool Run(const std::vector<int>& selectedModels);
 
+  /** Parse a comma-separated list of model names into a vector of eModels
+      indices. Valid names match the eModels enum without the 'e' prefix
+      (e.g. "Atmosphere,Systems,Propulsion,Output").
+      @param modelString comma-separated model names
+      @return vector of model indices */
+  static std::vector<int> ParseModelList(const std::string& modelString);
+
+  /** Set a model subset to use for Run(void). When non-empty, Run(void) will
+      execute only the listed models instead of all models.
+      @param models vector of eModels indices, or empty to run all */
+  void SetSelectedModels(const std::vector<int>& models) { SelectedModels = models; }
+
+  /** Get the currently configured model subset.
+      @return vector of model indices, empty means run all */
+  const std::vector<int>& GetSelectedModels(void) const { return SelectedModels; }
+
   /** Initializes the sim from the initial condition object and executes
       each scheduled model without integrating i.e. dt=0.
       @return true if successful */
@@ -711,6 +727,7 @@ private:
   FGOutput* Output;
   FGInput* Input;
 
+  std::vector<int> SelectedModels;
   bool trim_status;
   int ta_mode;
   int trim_completed;

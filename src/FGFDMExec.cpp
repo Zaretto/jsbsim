@@ -43,6 +43,7 @@ INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 #include <iomanip>
+#include <sstream>
 
 #include "FGFDMExec.h"
 #include "models/atmosphere/FGStandardAtmosphere.h"
@@ -404,12 +405,12 @@ bool FGFDMExec::DeAllocate(void)
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-extern "C" {
-int DCS__active = 1;
-}
 
 bool FGFDMExec::Run(void)
 {
+  if (!SelectedModels.empty())
+    return Run(SelectedModels);
+
   bool success=true;
 
   Debug(2);
@@ -425,37 +426,8 @@ bool FGFDMExec::Run(void)
   if (Script && !IntegrationSuspended()) success = Script->RunScript();
 
   for (unsigned int i = 0; i < Models.size(); i++) {
-      if (DCS__active) {
-          switch (i) {
-          // For DCS we only need a subset of the models to run.
-          // case ePropagate:
-          case eInput:
-          // case eInertial:
-          // case eAtmosphere:
-          // case eWinds:
-          case eSystems:
-          case eMassBalance:
-          // case eAuxiliary:
-          case ePropulsion:
-          case eAerodynamics:
-          case eGroundReactions:
-          case eExternalReactions:
-          // case eBuoyantForces:
-          case eAircraft:
-          case eAccelerations:
-          case eOutput:
-              // case eNumStandardModels:
-              LoadInputs(i);
-              Models[i]->Run(holding);
-              break;
-
-          default:
-              break;
-          }
-      } else {
-          LoadInputs(i);
-          Models[i]->Run(holding);
-      }
+    LoadInputs(i);
+    Models[i]->Run(holding);
   }
 
   if (Terminate) success = false;
@@ -490,6 +462,60 @@ bool FGFDMExec::Run(const std::vector<int>& selectedModels)
   if (Terminate) success = false;
 
   return success;
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+vector<int> FGFDMExec::ParseModelList(const string& modelString)
+{
+  static const struct { const char* name; int index; } modelNames[] = {
+    {"Propagate",         ePropagate},
+    {"Input",             eInput},
+    {"Inertial",          eInertial},
+    {"Atmosphere",        eAtmosphere},
+    {"Winds",             eWinds},
+    {"Systems",           eSystems},
+    {"MassBalance",       eMassBalance},
+    {"Auxiliary",         eAuxiliary},
+    {"Propulsion",        ePropulsion},
+    {"Aerodynamics",      eAerodynamics},
+    {"GroundReactions",   eGroundReactions},
+    {"ExternalReactions", eExternalReactions},
+    {"BuoyantForces",     eBuoyantForces},
+    {"Aircraft",          eAircraft},
+    {"Accelerations",     eAccelerations},
+    {"Output",            eOutput},
+  };
+
+  vector<int> models;
+  istringstream ss(modelString);
+  string token;
+
+  while (getline(ss, token, ',')) {
+    // Trim whitespace
+    size_t start = token.find_first_not_of(" \t");
+    size_t end = token.find_last_not_of(" \t");
+    if (start == string::npos) continue;
+    token = token.substr(start, end - start + 1);
+
+    bool found = false;
+    for (const auto& m : modelNames) {
+      if (token == m.name) {
+        models.push_back(m.index);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      cerr << "Unknown model name: \"" << token << "\"" << endl;
+      cerr << "Valid names:";
+      for (const auto& m : modelNames)
+        cerr << " " << m.name;
+      cerr << endl;
+    }
+  }
+
+  return models;
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

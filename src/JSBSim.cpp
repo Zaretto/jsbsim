@@ -77,6 +77,7 @@ INCLUDES
 
 #include <iostream>
 #include <cstdlib>
+#include <cstring>
 
 using namespace std;
 using JSBSim::FGXMLFileRead;
@@ -119,13 +120,9 @@ FORWARD DECLARATIONS
 
 bool options(int, char**);
 int real_main(int argc, char* argv[]);
-
-// Defined in FGFDMExec.cpp.  Global DCS/standalone-mode flag: when non-zero
-// the bridge runs JSBSim via the selective-model Run(dcsModels) path instead
-// of the full standalone Run() pipeline.  real_main honours this flag too so
-// scripted tests can reproduce bridge-mode execution without DCS.
-extern "C" { extern int DCS__active; }
 void PrintHelp(void);
+
+string SelectedModelsStr;
 
 #if defined(__BORLANDC__) || defined(_MSC_VER) || defined(__MINGW32__)
   double getcurrentseconds(void)
@@ -334,43 +331,48 @@ CLASS DOCUMENTATION
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 IMPLEMENTATION
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
-//
-//int main(int argc, char* argv[])
-//{
-//#if defined(_MSC_VER) || defined(__MINGW32__)
-//  _clearfp();
-//  _controlfp(_controlfp(0, 0) & ~(_EM_INVALID | _EM_ZERODIVIDE | _EM_OVERFLOW),
-//           _MCW_EM);
-//#elif defined(__GNUC__) && !defined(sgi) && !defined(__APPLE__)
-//  feenableexcept(FE_DIVBYZERO | FE_INVALID);
-//#endif
-//
-//  try {
-//    real_main(argc, argv);
-//  } catch (string& msg) {
-//    std::cerr << "FATAL ERROR: JSBSim terminated with an exception."
-//              << std::endl << "The message was: " << msg << std::endl;
-//    return 1;
-//  } catch (const char* msg) {
-//    std::cerr << "FATAL ERROR: JSBSim terminated with an exception."
-//              << std::endl << "The message was: " << msg << std::endl;
-//    return 1;
-//  } catch (const JSBSim::BaseException& e) {
-//    std::cerr << "FATAL ERROR: JSBSim terminated with an exception."
-//              << std::endl << "The message was: " << e.what() << std::endl;
-//    return 1;
-//  } catch (...) {
-//    std::cerr << "FATAL ERROR: JSBSim terminated with an unknown exception."
-//              << std::endl;
-//    return 1;
-//  }
-//  return 0;
-//}
+
+#ifndef JSBSIM_NO_MAIN
+int main(int argc, char* argv[])
+{
+#if defined(_MSC_VER) || defined(__MINGW32__)
+  _clearfp();
+  _controlfp(_controlfp(0, 0) & ~(_EM_INVALID | _EM_ZERODIVIDE | _EM_OVERFLOW),
+           _MCW_EM);
+#elif defined(__GNUC__) && !defined(sgi) && !defined(__APPLE__)
+  feenableexcept(FE_DIVBYZERO | FE_INVALID);
+#endif
+
+  try {
+    return real_main(argc, argv);
+  } catch (string& msg) {
+    std::cerr << "FATAL ERROR: JSBSim terminated with an exception."
+              << std::endl << "The message was: " << msg << std::endl;
+    return 1;
+  } catch (const char* msg) {
+    std::cerr << "FATAL ERROR: JSBSim terminated with an exception."
+              << std::endl << "The message was: " << msg << std::endl;
+    return 1;
+  } catch (const JSBSim::BaseException& e) {
+    std::cerr << "FATAL ERROR: JSBSim terminated with an exception."
+              << std::endl << "The message was: " << e.what() << std::endl;
+    return 1;
+  } catch (...) {
+    std::cerr << "FATAL ERROR: JSBSim terminated with an unknown exception."
+              << std::endl;
+    return 1;
+  }
+  return 0;
+}
+#endif // JSBSIM_NO_MAIN
 #include <stdio.h>
+#ifdef _WIN32
 #include <windows.h>
+#endif
 time_t start_time;
 void print_time(const char* action)
 {
+#ifdef _WIN32
     static LARGE_INTEGER frequency = {0};
     static LARGE_INTEGER start_time = {0};
     static LARGE_INTEGER last_time = {0};
@@ -406,6 +408,32 @@ void print_time(const char* action)
 
     // Update last_time for next call
     last_time = current_time;
+#else
+    static struct timespec start_ts = {0, 0};
+    static struct timespec last_ts = {0, 0};
+    struct timespec current_ts;
+    long long elapsed_since_last_ms;
+    long long total_elapsed_ms;
+
+    clock_gettime(CLOCK_MONOTONIC, &current_ts);
+
+    if (start_ts.tv_sec == 0 && start_ts.tv_nsec == 0) {
+        start_ts = current_ts;
+    }
+
+    total_elapsed_ms = (current_ts.tv_sec - start_ts.tv_sec) * 1000
+                     + (current_ts.tv_nsec - start_ts.tv_nsec) / 1000000;
+
+    if (last_ts.tv_sec == 0 && last_ts.tv_nsec == 0) {
+        printf("[%s] Timer started - Total: %lld ms\n", action, total_elapsed_ms);
+    } else {
+        elapsed_since_last_ms = (current_ts.tv_sec - last_ts.tv_sec) * 1000
+                              + (current_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
+        printf("[%s] Total: %lld ms, Since last: %lld ms\n", action, total_elapsed_ms, elapsed_since_last_ms);
+    }
+
+    last_ts = current_ts;
+#endif
 }
 
 
@@ -614,36 +642,17 @@ int real_main(int argc, char* argv[])
        << "---- JSBSim Execution beginning ... --------------------------------------------"
        << JSBSim::FGFDMExec::reset << endl << endl;
 
-  // Bridge-test support: when DCS__active==1, run JSBSim via the same selective
-  // model subset the acEFM bridge uses at runtime (Run(const vector<int>&)) so
-  // scripted tests can reproduce the bridge execution path without DCS.
-  //
-  // KEEP IN SYNC WITH dcsModels in
-  // flyt-EFM-dcsJSBSim/JSBSim_interface.cpp:589.
-  //
-  // Skipped: ePropagate (DCS integrates state), eInertial, eWinds, eBuoyantForces.
-  // Run: eAtmosphere, eInput, eSystems, eMassBalance, eAuxiliary, ePropulsion,
-  //      eAerodynamics, eGroundReactions, eExternalReactions, eAircraft,
-  //      eAccelerations, eOutput.
-  const std::vector<int> dcsModels = {
-    JSBSim::FGFDMExec::eAtmosphere,
-    JSBSim::FGFDMExec::eInput,
-    JSBSim::FGFDMExec::eSystems,
-    JSBSim::FGFDMExec::eMassBalance,
-    JSBSim::FGFDMExec::eAuxiliary,
-    JSBSim::FGFDMExec::ePropulsion,
-    JSBSim::FGFDMExec::eAerodynamics,
-    JSBSim::FGFDMExec::eGroundReactions,
-    JSBSim::FGFDMExec::eExternalReactions,
-    JSBSim::FGFDMExec::eAircraft,
-    JSBSim::FGFDMExec::eAccelerations,
-    JSBSim::FGFDMExec::eOutput,
-  };
-  auto stepOnce = [&]() -> bool {
-    return DCS__active ? FDMExec->Run(dcsModels) : FDMExec->Run();
-  };
+  // Apply command-line --models override (takes precedence over script)
+  if (!SelectedModelsStr.empty()) {
+    auto models = JSBSim::FGFDMExec::ParseModelList(SelectedModelsStr);
+    if (!models.empty()) {
+      FDMExec->SetSelectedModels(models);
+      cout << "Command-line --models override: running " << models.size()
+           << " selected models." << endl;
+    }
+  }
 
-  result = stepOnce();  // MAKE AN INITIAL RUN
+  result = FDMExec->Run();  // MAKE AN INITIAL RUN
 
   if (suspend) FDMExec->Hold();
 
@@ -670,7 +679,7 @@ int real_main(int argc, char* argv[])
     if ( ! FDMExec->Holding()) {
       if ( ! realtime ) {         // ------------ RUNNING IN BATCH MODE
 
-        result = stepOnce();
+        result = FDMExec->Run();
 
         if (play_nice) sim_nsleep(sleep_nseconds);
       } else {                    // ------------ RUNNING IN REALTIME MODE
@@ -681,7 +690,7 @@ int real_main(int argc, char* argv[])
         double cycle_start = getcurrentseconds();
 
         for (int i=0; i<(int)(sim_lag_time/frame_duration); i++) {  // catch up sim time to actual elapsed time.
-          result = stepOnce();
+          result = FDMExec->Run();
           cycle_duration = getcurrentseconds() - cycle_start;   // Calculate cycle duration
           cycle_start = getcurrentseconds();                    // Get new current_seconds
           if (FDMExec->Holding()) break;
@@ -698,7 +707,7 @@ int real_main(int argc, char* argv[])
     } else { // Suspended
       timer.pause(true);
       sim_nsleep(sleep_nseconds);
-      result = stepOnce();
+      result = FDMExec->Run();
     }
 
   }
@@ -895,6 +904,14 @@ bool options(int count, char **arg)
         exit(1);
       }
 
+    } else if (keyword == "--models") {
+      if (n != string::npos) {
+        SelectedModelsStr = value;
+      } else {
+        gripe;
+        exit(1);
+      }
+
     } else if (keyword == "--catalog") {
         catalog = true;
         if (!value.empty()) AircraftName=value;
@@ -976,7 +993,12 @@ void PrintHelp(void)
     cout << "    --simulation-rate=<rate (double)> specifies the sim dT time or frequency" << endl;
     cout << "                      If rate specified is less than 1, it is interpreted as" << endl;
     cout << "                      a time step size, otherwise it is assumed to be a rate in Hertz." << endl;
-    cout << "    --end=<time (double)> specifies the sim end time" << endl << endl;
+    cout << "    --end=<time (double)> specifies the sim end time" << endl;
+    cout << "    --models=<list>  run only the listed models (comma-separated)" << endl;
+    cout << "                     e.g. --models=Atmosphere,Systems,Propulsion,Aerodynamics,Aircraft,Output" << endl;
+    cout << "                     Valid names: Propagate, Input, Inertial, Atmosphere, Winds, Systems," << endl;
+    cout << "                     MassBalance, Auxiliary, Propulsion, Aerodynamics, GroundReactions," << endl;
+    cout << "                     ExternalReactions, BuoyantForces, Aircraft, Accelerations, Output" << endl << endl;
 
     cout << "  NOTE: There can be no spaces around the = sign when" << endl;
     cout << "        an option is followed by a filename" << endl << endl;
