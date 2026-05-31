@@ -40,6 +40,7 @@ INCLUDES
 #include <vector>
 #include <map>
 #include <memory>
+#include <string>
 
 #include "FGJSBBase.h"
 #include "FGPropertyReader.h"
@@ -194,6 +195,22 @@ public:
 
   void ResetEvents(void);
 
+  /** Set the path to a tolerances file for check resolution.
+      Overrides auto-discovery. */
+  void SetTolerancesPath(const SGPath& path) { TolerancesPath = path; }
+
+  /** Disable tolerance file auto-discovery. */
+  void SetNoTolerances(bool no_tol) { NoTolerances = no_tol; }
+
+  /** Get the number of check failures. */
+  int GetCheckFailCount(void) const { return CheckFailCount; }
+
+  /** Get the number of check passes. */
+  int GetCheckPassCount(void) const { return CheckPassCount; }
+
+  /** Print a summary of check results. */
+  void PrintCheckSummary(void) const;
+
 private:
   enum eAction {
     FG_RAMP  = 1,
@@ -207,6 +224,27 @@ private:
     FG_BOOL  = 3
   };
 
+  /** Specification for a single <check> element within a <notify>. */
+  struct check_spec {
+    std::string Property;      ///< Property path to read
+    std::string DisplayString; ///< Caption override for output
+    std::string Message;       ///< Custom message on output
+    double ExpectedValue;      ///< Expected numeric value
+    double TolAbs;             ///< Absolute tolerance (-1.0 = unspecified)
+    double TolRel;             ///< Relative tolerance (-1.0 = unspecified)
+
+    check_spec() : ExpectedValue(0.0), TolAbs(-1.0), TolRel(-1.0) {}
+  };
+
+  /** Tolerance rule from the tolerances file. */
+  struct tolerance_rule {
+    std::string Pattern;       ///< fnmatch-style pattern
+    double TolAbs;             ///< Absolute tolerance (-1.0 = unspecified)
+    double TolRel;             ///< Relative tolerance (-1.0 = unspecified)
+
+    tolerance_rule() : TolAbs(-1.0), TolRel(-1.0) {}
+  };
+
   struct event {
     FGCondition     *Condition;
     bool             Persistent;
@@ -215,11 +253,13 @@ private:
     bool             Notify;
     bool             NotifyKML;
     bool             Notified;
+    bool             HaltOnFailure;
     double           Delay;
     double           StartTime;
     double           TimeSpan;
     std::string           Name;
     std::string           Description;
+    std::string           CheckCondition;
     std::vector <SGPropertyNode_ptr>  SetParam;
     std::vector <std::string>  SetParamName;
     std::vector <FGPropertyValue*>  NotifyProperties;
@@ -233,14 +273,17 @@ private:
     std::vector <double>  ValueSpan;
     std::vector <bool>    Transiting;
     std::vector <FGFunction*> Functions;
+    std::vector <check_spec> CheckSpecs;
 
     event() {
       Triggered = false;
       Persistent = false;
       Continuous = false;
+      HaltOnFailure = false;
       Delay = 0.0;
       Notify = Notified = NotifyKML = false;
       Name = "";
+      CheckCondition = "and";
       StartTime = 0.0;
       TimeSpan = 0.0;
     }
@@ -261,6 +304,21 @@ private:
 
   FGFDMExec* FDMExec;
   std::shared_ptr<FGPropertyManager> PropertyManager;
+
+  // Tolerance support for <check> elements
+  SGPath TolerancesPath;
+  bool NoTolerances;
+  bool TolerancesLoaded;
+  int CheckFailCount;
+  int CheckPassCount;
+  std::vector<tolerance_rule> ToleranceRules;
+  double DefaultTolAbs;
+  double DefaultTolRel;
+
+  bool LoadTolerances(const SGPath& path);
+  SGPath FindTolerancesFile(const SGPath& scriptDir);
+  void ResolveCheckTolerance(check_spec& cs);
+
   void Debug(int from);
 };
 }
