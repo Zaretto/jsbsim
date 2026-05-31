@@ -122,8 +122,6 @@ bool options(int, char**);
 int real_main(int argc, char* argv[]);
 void PrintHelp(void);
 
-string SelectedModelsStr;
-
 #if defined(__BORLANDC__) || defined(_MSC_VER) || defined(__MINGW32__)
   double getcurrentseconds(void)
   {
@@ -567,16 +565,6 @@ int real_main(int argc, char* argv[])
        << "---- JSBSim Execution beginning ... --------------------------------------------"
        << JSBSim::FGFDMExec::reset << endl << endl;
 
-  // Apply command-line --models override (takes precedence over script)
-  if (!SelectedModelsStr.empty()) {
-    auto models = JSBSim::FGFDMExec::ParseModelList(SelectedModelsStr);
-    if (!models.empty()) {
-      FDMExec->SetSelectedModels(models);
-      cout << "Command-line --models override: running " << models.size()
-           << " selected models." << endl;
-    }
-  }
-
   result = FDMExec->Run();  // MAKE AN INITIAL RUN
 
   if (suspend) FDMExec->Hold();
@@ -824,14 +812,6 @@ bool options(int count, char **arg)
         exit(1);
       }
 
-    } else if (keyword == "--models") {
-      if (n != string::npos) {
-        SelectedModelsStr = value;
-      } else {
-        gripe;
-        exit(1);
-      }
-
     } else if (keyword == "--catalog") {
         catalog = true;
         if (!value.empty()) AircraftName=value;
@@ -913,12 +893,7 @@ void PrintHelp(void)
     cout << "    --simulation-rate=<rate (double)> specifies the sim dT time or frequency" << endl;
     cout << "                      If rate specified is less than 1, it is interpreted as" << endl;
     cout << "                      a time step size, otherwise it is assumed to be a rate in Hertz." << endl;
-    cout << "    --end=<time (double)> specifies the sim end time" << endl;
-    cout << "    --models=<list>  run only the listed models (comma-separated)" << endl;
-    cout << "                     e.g. --models=Atmosphere,Systems,Propulsion,Aerodynamics,Aircraft,Output" << endl;
-    cout << "                     Valid names: Propagate, Input, Inertial, Atmosphere, Winds, Systems," << endl;
-    cout << "                     MassBalance, Auxiliary, Propulsion, Aerodynamics, GroundReactions," << endl;
-    cout << "                     ExternalReactions, BuoyantForces, Aircraft, Accelerations, Output" << endl << endl;
+    cout << "    --end=<time (double)> specifies the sim end time" << endl << endl;
 
     cout << "  NOTE: There can be no spaces around the = sign when" << endl;
     cout << "        an option is followed by a filename" << endl << endl;

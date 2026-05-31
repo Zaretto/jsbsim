@@ -165,6 +165,20 @@ FGFDMExec::FGFDMExec(FGPropertyManager* root, std::shared_ptr<unsigned int> fdmc
   instance->Tie("simulation/trim-completed", &trim_completed);
   instance->Tie("forces/hold-down", this, &FGFDMExec::GetHoldDown, &FGFDMExec::SetHoldDown);
 
+  // Per-model execution-enable property: simulation/models/<name>/enabled
+  // (default true). Setting one false skips that model's Run() while preserving
+  // its state -- the property-tree mechanism by which an external system can
+  // supersede a model (e.g. external propagation, host-owned ground reactions).
+  // Names use the stable canonical eModels order, independent of FGModel::Name.
+  static const char* const modelEnableNames[eNumStandardModels] = {
+    "propagate", "input", "inertial", "atmosphere", "winds", "systems",
+    "massbalance", "auxiliary", "propulsion", "aerodynamics", "groundreactions",
+    "externalreactions", "buoyantforces", "aircraft", "accelerations", "output"
+  };
+  for (unsigned int i = 0; i < Models.size(); ++i)
+    if (Models[i])
+      Models[i]->BindModelEnabled(modelEnableNames[i]);
+
   Constructing = false;
 }
 
@@ -408,9 +422,6 @@ bool FGFDMExec::DeAllocate(void)
 
 bool FGFDMExec::Run(void)
 {
-  if (!SelectedModels.empty())
-    return Run(SelectedModels);
-
   bool success=true;
 
   Debug(2);
@@ -433,89 +444,6 @@ bool FGFDMExec::Run(void)
   if (Terminate) success = false;
 
   return success;
-}
-
-//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-bool FGFDMExec::Run(const std::vector<int>& selectedModels)
-{
-  bool success = true;
-
-  Debug(2);
-
-  for (auto& ChildFDM : ChildFDMList) {
-    ChildFDM->AssignState(Propagate);
-    ChildFDM->Run();
-  }
-
-  IncrTime();
-
-  if (Script && !IntegrationSuspended()) success = Script->RunScript();
-
-  for (int idx : selectedModels) {
-    if (idx >= 0 && idx < static_cast<int>(Models.size())) {
-      LoadInputs(static_cast<unsigned int>(idx));
-      Models[idx]->Run(holding);
-    }
-  }
-
-  if (Terminate) success = false;
-
-  return success;
-}
-
-//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-vector<int> FGFDMExec::ParseModelList(const string& modelString)
-{
-  static const struct { const char* name; int index; } modelNames[] = {
-    {"Propagate",         ePropagate},
-    {"Input",             eInput},
-    {"Inertial",          eInertial},
-    {"Atmosphere",        eAtmosphere},
-    {"Winds",             eWinds},
-    {"Systems",           eSystems},
-    {"MassBalance",       eMassBalance},
-    {"Auxiliary",         eAuxiliary},
-    {"Propulsion",        ePropulsion},
-    {"Aerodynamics",      eAerodynamics},
-    {"GroundReactions",   eGroundReactions},
-    {"ExternalReactions", eExternalReactions},
-    {"BuoyantForces",     eBuoyantForces},
-    {"Aircraft",          eAircraft},
-    {"Accelerations",     eAccelerations},
-    {"Output",            eOutput},
-  };
-
-  vector<int> models;
-  istringstream ss(modelString);
-  string token;
-
-  while (getline(ss, token, ',')) {
-    // Trim whitespace
-    size_t start = token.find_first_not_of(" \t");
-    size_t end = token.find_last_not_of(" \t");
-    if (start == string::npos) continue;
-    token = token.substr(start, end - start + 1);
-
-    bool found = false;
-    for (const auto& m : modelNames) {
-      if (token == m.name) {
-        models.push_back(m.index);
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      cerr << "Unknown model name: \"" << token << "\"" << endl;
-      cerr << "Valid names:";
-      for (const auto& m : modelNames)
-        cerr << " " << m.name;
-      cerr << endl;
-    }
-  }
-
-  return models;
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

@@ -244,31 +244,10 @@ public:
   void Unbind(void) {instance->Unbind();}
 
   /** This function executes each scheduled model in succession.
+      Per-model execution can be skipped at runtime via the
+      simulation/models/<name>/enabled property (see FGModel).
       @return true if successful, false if sim should be ended  */
   bool Run(void);
-
-  /** Execute only the specified models, in the order given.
-      Each model gets LoadInputs() then Run(). Models not in the list are
-      skipped entirely. Use eModels enum values for the indices.
-      @param selectedModels vector of model indices to execute
-      @return true if successful, false if sim should be ended  */
-  bool Run(const std::vector<int>& selectedModels);
-
-  /** Parse a comma-separated list of model names into a vector of eModels
-      indices. Valid names match the eModels enum without the 'e' prefix
-      (e.g. "Atmosphere,Systems,Propulsion,Output").
-      @param modelString comma-separated model names
-      @return vector of model indices */
-  static std::vector<int> ParseModelList(const std::string& modelString);
-
-  /** Set a model subset to use for Run(void). When non-empty, Run(void) will
-      execute only the listed models instead of all models.
-      @param models vector of eModels indices, or empty to run all */
-  void SetSelectedModels(const std::vector<int>& models) { SelectedModels = models; }
-
-  /** Get the currently configured model subset.
-      @return vector of model indices, empty means run all */
-  const std::vector<int>& GetSelectedModels(void) const { return SelectedModels; }
 
   /** Initializes the sim from the initial condition object and executes
       each scheduled model without integrating i.e. dt=0.
@@ -727,7 +706,6 @@ private:
   FGOutput* Output;
   FGInput* Input;
 
-  std::vector<int> SelectedModels;
   bool trim_status;
   int ta_mode;
   int trim_completed;

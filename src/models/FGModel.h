@@ -48,6 +48,8 @@ INCLUDES
 FORWARD DECLARATIONS
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
+class SGPropertyNode;
+
 namespace JSBSim {
 
 class FGFDMExec;
@@ -93,17 +95,15 @@ public:
   unsigned int GetRate(void) const { return rate; }
   FGFDMExec* GetExec(void) const { return FDMExec; }
 
-  /** Enable or disable execution of this model.
-      When disabled, the model's Run() body is skipped (FGModel::Run returns
-      true) while its last computed state and property bindings are preserved.
-      This lets an external system supersede a model without removing it from
-      the schedule -- e.g. an external propagation engine owning FGPropagate,
-      or a host physics engine owning FGGroundReactions. The default is enabled,
-      so behaviour is unchanged unless a model is explicitly disabled.
-      @param e true to run the model (default), false to skip it */
-  void SetEnabled(bool e) { Enabled = e; }
-  /// @return true if the model executes, false if it is being skipped
-  bool GetEnabled(void) const { return Enabled; }
+  /** Bind this model's execution-enable flag to the property
+      simulation/models/<name>/enabled (default true), using the stable
+      canonical name supplied by FGFDMExec. When that property is set false,
+      Run() is skipped while the model's last state and property bindings are
+      preserved -- the property-tree mechanism by which an external system can
+      supersede a model (e.g. external propagation owning FGPropagate, or a host
+      physics engine owning FGGroundReactions). Behaviour is unchanged unless the
+      property is explicitly set false. */
+  void BindModelEnabled(const std::string& name);
 
   void SetPropertyManager(std::shared_ptr<FGPropertyManager> fgpm) { PropertyManager=fgpm;}
   virtual SGPath FindFullPathName(const SGPath& path) const;
@@ -113,7 +113,7 @@ public:
 protected:
   unsigned int exe_ctr;
   unsigned int rate;
-  bool Enabled = true;
+  SGPropertyNode* ModelEnabled = nullptr;
   std::string Name;
 
   /** Uploads this model in memory.
