@@ -365,83 +365,10 @@ int main(int argc, char* argv[])
   return 0;
 }
 #endif // JSBSIM_NO_MAIN
-#include <stdio.h>
-#ifdef _WIN32
-#include <windows.h>
-#endif
-time_t start_time;
-void print_time(const char* action)
-{
-#ifdef _WIN32
-    static LARGE_INTEGER frequency = {0};
-    static LARGE_INTEGER start_time = {0};
-    static LARGE_INTEGER last_time = {0};
-    LARGE_INTEGER current_time;
-    long long elapsed_since_last_ms;
-    long long total_elapsed_ms;
-
-    // Initialize frequency on first call
-    if (frequency.QuadPart == 0) {
-        QueryPerformanceFrequency(&frequency);
-    }
-
-    // Get current time
-    QueryPerformanceCounter(&current_time);
-
-    // Initialize start time on first call
-    if (start_time.QuadPart == 0) {
-        start_time = current_time;
-    }
-
-    // Calculate total elapsed milliseconds since start
-    total_elapsed_ms = ((current_time.QuadPart - start_time.QuadPart) * 1000) / frequency.QuadPart;
-
-    // Calculate elapsed milliseconds since last call
-    if (last_time.QuadPart == 0) {
-        // First call - no elapsed time since last call to show
-        printf("[%s] Timer started - Total: %lld ms\n", action, total_elapsed_ms);
-    } else {
-        // Calculate difference in milliseconds since last call
-        elapsed_since_last_ms = ((current_time.QuadPart - last_time.QuadPart) * 1000) / frequency.QuadPart;
-        printf("[%s] Total: %lld ms, Since last: %lld ms\n", action, total_elapsed_ms, elapsed_since_last_ms);
-    }
-
-    // Update last_time for next call
-    last_time = current_time;
-#else
-    static struct timespec start_ts = {0, 0};
-    static struct timespec last_ts = {0, 0};
-    struct timespec current_ts;
-    long long elapsed_since_last_ms;
-    long long total_elapsed_ms;
-
-    clock_gettime(CLOCK_MONOTONIC, &current_ts);
-
-    if (start_ts.tv_sec == 0 && start_ts.tv_nsec == 0) {
-        start_ts = current_ts;
-    }
-
-    total_elapsed_ms = (current_ts.tv_sec - start_ts.tv_sec) * 1000
-                     + (current_ts.tv_nsec - start_ts.tv_nsec) / 1000000;
-
-    if (last_ts.tv_sec == 0 && last_ts.tv_nsec == 0) {
-        printf("[%s] Timer started - Total: %lld ms\n", action, total_elapsed_ms);
-    } else {
-        elapsed_since_last_ms = (current_ts.tv_sec - last_ts.tv_sec) * 1000
-                              + (current_ts.tv_nsec - last_ts.tv_nsec) / 1000000;
-        printf("[%s] Total: %lld ms, Since last: %lld ms\n", action, total_elapsed_ms, elapsed_since_last_ms);
-    }
-
-    last_ts = current_ts;
-#endif
-}
-
 
 int real_main(int argc, char* argv[])
 {
   // *** INITIALIZATIONS *** //
-        print_time("Begin");
-
   ScriptName = "";
   AircraftName = "";
   ResetName = "";
@@ -483,7 +410,6 @@ int real_main(int argc, char* argv[])
   FDMExec->GetPropertyManager()->Tie("simulation/frame_start_time", &actual_elapsed_time);
   FDMExec->GetPropertyManager()->Tie("simulation/cycle_duration", &cycle_duration);
   FDMExec->GetPropertyManager()->Tie("simulation/modules-active", &modules_active);
-  print_time("JSBSIM setup");
 
   Timer timer;
   SGPropertyNode_ptr reset_node = FDMExec->GetPropertyManager()->GetNode("simulation/reset");
@@ -529,7 +455,6 @@ int real_main(int argc, char* argv[])
       exit(-1);
     }
   }
-  print_time("Load model");
   // *** OPTION A: LOAD A SCRIPT, WHICH LOADS EVERYTHING ELSE *** //
   if (!ScriptName.isNull()) {
 
@@ -656,9 +581,6 @@ int real_main(int argc, char* argv[])
 
   if (suspend) FDMExec->Hold();
 
-  // Print actual time at start
-  print_time("Start");
-  time(&start_time);
   frame_duration = FDMExec->GetDeltaT();
   if (realtime) sleep_nseconds = (long)(frame_duration*1e9);
   else          sleep_nseconds = (sleep_period )*1e9;           // 0.01 seconds
@@ -700,7 +622,6 @@ int real_main(int argc, char* argv[])
 
         if (FDMExec->GetSimTime() >= new_five_second_value) { // Print out elapsed time every five seconds.
           cout << "Simulation elapsed time: " << FDMExec->GetSimTime() << endl;
-            printf("%f\n", FDMExec->GetPropulsion()->GetTanksWeight());
             new_five_second_value += 5.0;
         }
       }
@@ -713,19 +634,18 @@ int real_main(int argc, char* argv[])
   }
 
   // PRINT ENDING CLOCK TIME
-  print_time("End");
-  char rate_text[200];
-  time_t end_time;
-  time(&end_time);
-  auto delta_t = end_time - start_time;
-  if (delta_t) {
-      double rate = FDMExec->GetFrame() / (double)delta_t;
+  time_t tod;
+  struct tm local;
+  char s[100];
+  time(&tod);
+#if defined(_MSC_VER) || defined(__MINGW32__)
+  localtime_s(&local, &tod);
+#else
+  localtime_r(&tod, &local);
+#endif
+  strftime(s, 99, "%A %B %d %Y %X", &local);
+  cout << "End: " << s << " (HH:MM:SS)" << endl;
 
-      sprintf(rate_text, "%5.1f hz (%ds %d)", rate, delta_t, FDMExec->GetFrame());
-      cout << rate_text; 
-  } else
-      strcpy(rate_text, "**");
-  cout << endl;
   // CLEAN UP
   delete FDMExec;
 

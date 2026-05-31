@@ -606,20 +606,6 @@ bool FGScript::RunScript(void)
                  << " (Event " << event_ctr << ")"
                  << " executed at time: " << highint << currentTime << normint
                  << endl;
-#ifdef REPORT_FRAME_RATE
-            time_t tod;
-            time(&tod);
-            extern time_t start_time;
-            auto delta_t = tod - start_time;
-            char rate_text[200];
-            if (delta_t) {
-                double rate = FDMExec->GetFrame() / (double)delta_t;
-
-                sprintf(rate_text, "%5.1f hz (%ds %d)", rate, delta_t, FDMExec->GetFrame());
-            } else
-                strcpy(rate_text, "**");
-			cout << "Frame rate " << rate_text << endl;
-#endif
         }
         if (!thisEvent.Description.empty()) {
           cout << "    " << thisEvent.Description << endl;
