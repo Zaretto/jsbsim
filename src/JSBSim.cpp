@@ -42,6 +42,7 @@ INCLUDES
 #include "initialization/FGTrim.h"
 #include "initialization/FGInitialCondition.h"
 #include "FGFDMExec.h"
+#include "input_output/FGScript.h"
 #include "input_output/FGXMLFileRead.h"
 #include "input_output/string_utilities.h"
 
@@ -336,7 +337,7 @@ int main(int argc, char* argv[])
 #endif
 
   try {
-    real_main(argc, argv);
+    return real_main(argc, argv);
   } catch (string& msg) {
     std::cerr << "FATAL ERROR: JSBSim terminated with an exception."
               << std::endl << "The message was: " << msg << std::endl;
@@ -354,7 +355,6 @@ int main(int argc, char* argv[])
               << std::endl;
     return 1;
   }
-  return 0;
 }
 
 int real_main(int argc, char* argv[])
@@ -644,10 +644,18 @@ int real_main(int argc, char* argv[])
   strftime(s, 99, "%A %B %d %Y %X", &local);
   cout << "End: " << s << " (HH:MM:SS)" << endl;
 
+  // A script with <check> elements reports its verdict in the exit code.
+  int exit_code = 0;
+  auto script = FDMExec->GetScript();
+  if (script) {
+    script->PrintCheckSummary();
+    if (script->GetCheckFailCount() > 0) exit_code = 1;
+  }
+
   // CLEAN UP
   delete FDMExec;
 
-  return 0;
+  return exit_code;
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

@@ -20,6 +20,7 @@ set(PYTHON_TESTS ResetOutputFiles
                  TestCosineGust
                  TestTurbulenceGustStop
                  TestScriptOutput
+                 TestScriptCheck
                  CheckSimTimeReset
                  TestHoldDown
                  CheckTrim

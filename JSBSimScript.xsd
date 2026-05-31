@@ -30,6 +30,17 @@
         </xs:element>
         <xs:element ref="run"/>
         <xs:element name="output" minOccurs="0" maxOccurs="unbounded" type="output"/>
+        <xs:element name="tolerances" minOccurs="0">
+          <xs:annotation><xs:documentation>
+            Names the file that supplies tolerances to the "check" elements
+            that do not carry their own. The path is taken from the JSBSim root
+            directory. Without this element, tolerances.xml in the root
+            directory is used when it exists.
+          </xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="src" type="xs:token" use="required"/>
+          </xs:complexType>
+        </xs:element>
       </xs:sequence>
       <xs:attribute name="name" type="xs:token" use="required"/>
     </xs:complexType>
@@ -106,6 +117,12 @@
         </xs:choice>
       </xs:sequence>
       <xs:attribute name="name" type="xs:token" use="optional"/>
+      <xs:attribute name="halt_on_failure" type="xs:boolean" use="optional" default="false">
+        <xs:annotation><xs:documentation>
+          When true, the script stops at this event if its "check" elements
+          fail.
+        </xs:documentation></xs:annotation>
+      </xs:attribute>
       <xs:attribute name="persistent" type="xs:boolean" use="optional" default="false">
         <xs:annotation><xs:documentation>
           If an event is marked persistent, the event will be executed anytime
@@ -163,8 +180,33 @@
     <xs:complexType>
       <xs:sequence minOccurs="0" maxOccurs="unbounded">
         <xs:element name="description" minOccurs="0" type="xs:string"/>
-        <xs:element name="property" type="property-with-caption"/>
+        <xs:element name="property" minOccurs="0" type="property-with-caption"/>
+        <xs:element name="check" minOccurs="0">
+          <xs:annotation><xs:documentation>
+            Compares a property with an expected value when the event fires.
+            The check passes when the difference is within "tol_abs", or within
+            "tol_rel" times the expected value. A check with neither takes its
+            tolerances from the tolerances file, or a tight default. The
+            outcome is printed with the notification, counted in the properties
+            simulation/script/checks-passed and checks-failed, and reported in
+            the exit code of the JSBSim executable.
+          </xs:documentation></xs:annotation>
+          <xs:complexType>
+            <xs:attribute name="property" type="xs:token" use="required"/>
+            <xs:attribute name="value" type="xs:double" use="required"/>
+            <xs:attribute name="tol_abs" type="xs:double" use="optional"/>
+            <xs:attribute name="tol_rel" type="xs:double" use="optional"/>
+            <xs:attribute name="caption" type="xs:string" use="optional"/>
+            <xs:attribute name="message" type="xs:string" use="optional"/>
+          </xs:complexType>
+        </xs:element>
       </xs:sequence>
+      <xs:attribute name="logic" type="AND-OR" default="AND">
+        <xs:annotation><xs:documentation>
+          How the "check" elements combine: with AND the event passes only
+          when every check passes, with OR when any one of them does.
+        </xs:documentation></xs:annotation>
+      </xs:attribute>
       <xs:attribute name="format" use="optional">
         <xs:simpleType>
           <xs:restriction base="xs:token">
