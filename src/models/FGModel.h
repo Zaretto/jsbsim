@@ -93,6 +93,18 @@ public:
   unsigned int GetRate(void) const { return rate; }
   FGFDMExec* GetExec(void) const { return FDMExec; }
 
+  /** Enable or disable execution of this model.
+      When disabled, the model's Run() body is skipped (FGModel::Run returns
+      true) while its last computed state and property bindings are preserved.
+      This lets an external system supersede a model without removing it from
+      the schedule -- e.g. an external propagation engine owning FGPropagate,
+      or a host physics engine owning FGGroundReactions. The default is enabled,
+      so behaviour is unchanged unless a model is explicitly disabled.
+      @param e true to run the model (default), false to skip it */
+  void SetEnabled(bool e) { Enabled = e; }
+  /// @return true if the model executes, false if it is being skipped
+  bool GetEnabled(void) const { return Enabled; }
+
   void SetPropertyManager(std::shared_ptr<FGPropertyManager> fgpm) { PropertyManager=fgpm;}
   virtual SGPath FindFullPathName(const SGPath& path) const;
   const std::string& GetName(void) const { return Name; }
@@ -101,6 +113,7 @@ public:
 protected:
   unsigned int exe_ctr;
   unsigned int rate;
+  bool Enabled = true;
   std::string Name;
 
   /** Uploads this model in memory.

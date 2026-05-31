@@ -91,6 +91,11 @@ bool FGModel::Run(bool Holding)
 {
   FGModel::Debug(2);
 
+  // A disabled model is skipped entirely: its Run() body does not execute, but
+  // its last state and property bindings are preserved so an external system
+  // can supersede it (e.g. external propagation, host-owned ground reactions).
+  if (!Enabled) return true;
+
   if (rate == 1) return false; // Fast exit if nothing to do
 
   if (exe_ctr >= rate) exe_ctr = 0;
