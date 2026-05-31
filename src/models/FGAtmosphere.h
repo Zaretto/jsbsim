@@ -137,15 +137,11 @@ public:
   virtual void SetTemperature(double t, double h, eTemperature unit=eFahrenheit) = 0;
   //@}
 
-  virtual void SetSoundSpeed(double v) { Soundspeed = v; }
-
   //  *************************************************************************
   /// @name Pressure access functions.
   //@{
   /// Returns the pressure in psf.
   virtual double GetPressure(void) const { return Pressure; }
-  /// Sets the pressure in psf; e.g. for an external atmosphere model
-  virtual void SetPressure(double v) { Pressure = v; }
 
   /// Returns the pressure at a specified altitude in psf.
   virtual double GetPressure(double altitude) const = 0;
@@ -167,11 +163,8 @@ public:
   /// @name Density access functions.
   //@{
   /** Returns the density in slugs/ft^3.
-      This function may only be used if Run() is called first or after calling SetDensity */
+      This function may only be used if Run() is called first. */
   virtual double GetDensity(void)  const {return Density;}
-  // Sets the density in slugs/ft^3 - to support externally defined atmoshphere models.
-
-  virtual void SetDensity(double v) { Density = v; }
 
   /** Returns the density in slugs/ft^3 at a given altitude in ft. */
   virtual double GetDensity(double altitude) const;
@@ -179,7 +172,6 @@ public:
   /** Returns the density in slugs/ft^3 at a given altitude in ft. */
   /// Returns the sea level density in slugs/ft^3
   virtual double GetDensitySL(void)  const { return SLdensity; }
-  virtual void SetDensitySL(double v) { SLdensity = v; }
 
   /// Returns the ratio of at-altitude density over the sea level value.
   virtual double GetDensityRatio(void) const { return Density/SLdensity; }
