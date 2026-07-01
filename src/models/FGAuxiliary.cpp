@@ -435,9 +435,12 @@ void FGAuxiliary::bind(void)
   PropertyManager->Tie("accelerations/n-pilot-x-norm", this, eX, &FGAuxiliary::GetNpilot);
   PropertyManager->Tie("accelerations/n-pilot-y-norm", this, eY, &FGAuxiliary::GetNpilot);
   PropertyManager->Tie("accelerations/n-pilot-z-norm", this, eZ, &FGAuxiliary::GetNpilot);
-  PropertyManager->Tie("accelerations/Nx", this, &FGAuxiliary::GetNx);
-  PropertyManager->Tie("accelerations/Ny", this, &FGAuxiliary::GetNy);
-  PropertyManager->Tie("accelerations/Nz", this, &FGAuxiliary::GetNz);
+  // Body-axis load factors, tied read-write so a host that owns the state
+  // integration can inject them. Run() recomputes them from the body
+  // accelerations every frame, so an injected value must be written after Run().
+  PropertyManager->Tie("accelerations/Nx", &Nx);
+  PropertyManager->Tie("accelerations/Ny", &Ny);
+  PropertyManager->Tie("accelerations/Nz", &Nz);
   PropertyManager->Tie("forces/load-factor", this, &FGAuxiliary::GetNlf);
   PropertyManager->Tie("aero/alpha-rad", this, &FGAuxiliary::Getalpha);
   PropertyManager->Tie("aero/beta-rad", this, &FGAuxiliary::Getbeta);
@@ -449,8 +452,10 @@ void FGAuxiliary::bind(void)
   PropertyManager->Tie("aero/qbar-psf", this, &FGAuxiliary::Getqbar);
   PropertyManager->Tie("aero/qbarUW-psf", this, &FGAuxiliary::GetqbarUW);
   PropertyManager->Tie("aero/qbarUV-psf", this, &FGAuxiliary::GetqbarUV);
-  PropertyManager->Tie("aero/alphadot-rad_sec", this, &FGAuxiliary::Getadot);
-  PropertyManager->Tie("aero/betadot-rad_sec", this, &FGAuxiliary::Getbdot);
+  // Alpha/beta rates (native rad/sec), tied read-write for host injection like
+  // the load factors above; the deg_sec aliases stay read-only.
+  PropertyManager->Tie("aero/alphadot-rad_sec", &adot);
+  PropertyManager->Tie("aero/betadot-rad_sec", &bdot);
   PropertyManager->Tie("aero/alphadot-deg_sec", this, inDegrees, &FGAuxiliary::Getadot);
   PropertyManager->Tie("aero/betadot-deg_sec", this, inDegrees, &FGAuxiliary::Getbdot);
   PropertyManager->Tie("aero/h_b-cg-ft", this, &FGAuxiliary::GetHOverBCG);
