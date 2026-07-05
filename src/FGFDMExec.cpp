@@ -90,6 +90,7 @@ FGFDMExec::FGFDMExec(FGPropertyManager* root, std::shared_ptr<unsigned int> fdmc
 
   modelLoaded = false;
   IsChild = false;
+  AddModelToPath = true;
   holding = false;
   Terminate = false;
   HoldDown = false;
@@ -859,6 +860,8 @@ bool FGFDMExec::LoadModel(const string& model, bool addModelToPath)
 {
   SGPath aircraftCfgFileName;
   bool result = false; // initialize result to false, indicating input file not yet read
+
+  if (!AddModelToPath) addModelToPath = false;
 
   modelName = model; // Set the class modelName attribute
 
