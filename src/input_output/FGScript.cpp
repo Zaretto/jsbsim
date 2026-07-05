@@ -42,6 +42,7 @@ INCLUDES
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%*/
 
 #include <iomanip>
+#include <cmath>
 
 #include "FGScript.h"
 #include "FGFDMExec.h"
@@ -54,6 +55,27 @@ INCLUDES
 
 using namespace std;
 
+namespace {
+  // Portable glob matcher supporting '*' (any run, incl. empty) and '?' (one
+  // char). Self-contained so this translation unit needs no OS-specific headers.
+  bool pattern_match(const string& pattern, const string& str) {
+    size_t p = 0, s = 0, star = string::npos, mark = 0;
+    while (s < str.size()) {
+      if (p < pattern.size() && (pattern[p] == '?' || pattern[p] == str[s])) {
+        ++p; ++s;
+      } else if (p < pattern.size() && pattern[p] == '*') {
+        star = p++; mark = s;
+      } else if (star != string::npos) {
+        p = star + 1; s = ++mark;
+      } else {
+        return false;
+      }
+    }
+    while (p < pattern.size() && pattern[p] == '*') ++p;
+    return p == pattern.size();
+  }
+}
+
 namespace JSBSim {
 
 /*%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -62,7 +84,10 @@ CLASS IMPLEMENTATION
 
 // Constructor
 
-FGScript::FGScript(FGFDMExec* fgex) : FDMExec(fgex)
+FGScript::FGScript(FGFDMExec* fgex) : FDMExec(fgex),
+  NoTolerances(false), TolerancesLoaded(false),
+  CheckFailCount(0), CheckPassCount(0),
+  DefaultTolAbs(1e-6), DefaultTolRel(-1.0)
 {
   PropertyManager=FDMExec->GetPropertyManager();
 
@@ -249,6 +274,11 @@ bool FGScript::LoadScript(const SGPath& script, double default_dT,
       newEvent->Continuous = true;
     }
 
+    // Should the simulation halt on check failure?
+    if (event_element->GetAttributeValue("halt-on-failure") == string("true")) {
+      newEvent->HaltOnFailure = true;
+    }
+
     // Process the conditions
     Element* condition_element = event_element->FindElement("condition");
     if (condition_element) {
@@ -283,6 +313,12 @@ bool FGScript::LoadScript(const SGPath& script, double default_dT,
         if (notify_element->GetAttributeValue("format") == "kml") newEvent->NotifyKML = true;
       }
       newEvent->Notify = true;
+
+      // Parse check-condition attribute on <notify>
+      if (notify_element->HasAttribute("check-condition")) {
+        newEvent->CheckCondition = notify_element->GetAttributeValue("check-condition");
+      }
+
       // Check here for new <description> tag that gets echoed
       string notify_description = notify_element->FindElementValue("description");
       if (!notify_description.empty()) {
@@ -318,6 +354,40 @@ bool FGScript::LoadScript(const SGPath& script, double default_dT,
         }
 
         notify_property_element = notify_element->FindNextElement("property");
+      }
+
+      // Parse <check> elements within <notify>
+      Element* check_element = notify_element->FindElement("check");
+      while (check_element) {
+        check_spec cs;
+        cs.Property = check_element->GetAttributeValue("property");
+        if (cs.Property.empty()) {
+          FGXMLLogging log(check_element, LogLevel::ERROR);
+          log << "  <check> element requires a 'property' attribute.\n";
+          delete newEvent;
+          return false;
+        }
+        if (!check_element->GetAttributeValue("value").empty()) {
+          cs.ExpectedValue = check_element->GetAttributeValueAsNumber("value");
+        } else {
+          FGXMLLogging log(check_element, LogLevel::ERROR);
+          log << "  <check> element requires a 'value' attribute.\n";
+          delete newEvent;
+          return false;
+        }
+        if (!check_element->GetAttributeValue("tol_abs").empty())
+          cs.TolAbs = check_element->GetAttributeValueAsNumber("tol_abs");
+        if (!check_element->GetAttributeValue("tol_rel").empty())
+          cs.TolRel = check_element->GetAttributeValueAsNumber("tol_rel");
+        if (!check_element->GetAttributeValue("message").empty())
+          cs.Message = check_element->GetAttributeValue("message");
+        if (!check_element->GetAttributeValue("caption").empty())
+          cs.DisplayString = check_element->GetAttributeValue("caption");
+        else
+          cs.DisplayString = cs.Property;
+
+        newEvent->CheckSpecs.push_back(cs);
+        check_element = notify_element->FindNextElement("check");
       }
     }
 
@@ -370,6 +440,31 @@ bool FGScript::LoadScript(const SGPath& script, double default_dT,
     delete newEvent;
 
     event_element = run_element->FindNextElement("event");
+  }
+
+  // Auto-discover and load tolerances file for check resolution
+  bool hasChecks = false;
+  for (unsigned int ev = 0; ev < Events.size(); ev++) {
+    if (!Events[ev].CheckSpecs.empty()) { hasChecks = true; break; }
+  }
+
+  if (hasChecks && !NoTolerances) {
+    SGPath tolPath;
+    if (!TolerancesPath.isNull()) {
+      tolPath = TolerancesPath;
+    } else {
+      tolPath = FindTolerancesFile(scriptDir);
+    }
+    if (!tolPath.isNull()) {
+      LoadTolerances(tolPath);
+    }
+
+    // Resolve tolerances for all check specs
+    for (unsigned int ev = 0; ev < Events.size(); ev++) {
+      for (unsigned int cs = 0; cs < Events[ev].CheckSpecs.size(); cs++) {
+        ResolveCheckTolerance(Events[ev].CheckSpecs[cs]);
+      }
+    }
   }
 
   Debug(4);
@@ -544,6 +639,99 @@ bool FGScript::RunScript(void)
           out << "  </Point>\n";
           out << "</Placemark>\n";
         }
+        // Evaluate <check> elements
+        if (!thisEvent.CheckSpecs.empty()) {
+          int eventCheckFails = 0;
+          int eventCheckTotal = (int)thisEvent.CheckSpecs.size();
+
+          for (unsigned int cs = 0; cs < thisEvent.CheckSpecs.size(); cs++) {
+            check_spec& chk = thisEvent.CheckSpecs[cs];
+            double actualValue = 0.0;
+
+            if (PropertyManager->HasNode(chk.Property)) {
+              actualValue = PropertyManager->GetNode(chk.Property)->getDoubleValue();
+            } else {
+              FGLogging log(LogLevel::ERROR);
+              log << LogFormat::RED << "  CHECK ERROR: Property '" << chk.Property
+                  << "' not found in property tree." << LogFormat::RESET << "\n";
+              eventCheckFails++;
+              CheckFailCount++;
+              continue;
+            }
+
+            double delta = fabs(actualValue - chk.ExpectedValue);
+            double effectiveTol = chk.TolAbs >= 0.0 ? chk.TolAbs : DefaultTolAbs;
+            bool passed = false;
+
+            // Check absolute tolerance
+            if (chk.TolAbs >= 0.0 && delta <= chk.TolAbs) {
+              passed = true;
+            }
+            // Check relative tolerance
+            if (!passed && chk.TolRel >= 0.0) {
+              double refMag = fabs(chk.ExpectedValue);
+              if (refMag < 1e-12) refMag = 1e-12;
+              if (delta / refMag <= chk.TolRel)
+                passed = true;
+            }
+            // If only resolved absolute tolerance (no explicit tol_abs or tol_rel)
+            if (!passed && chk.TolAbs < 0.0 && chk.TolRel < 0.0) {
+              // Use default tight tolerance
+              if (delta <= DefaultTolAbs) passed = true;
+              effectiveTol = DefaultTolAbs;
+            }
+
+            if (passed) {
+              out << "    CHECK PASS: " << chk.DisplayString
+                  << " = " << actualValue
+                  << " expected " << chk.ExpectedValue
+                  << " tol " << effectiveTol;
+              if (!chk.Message.empty()) out << " : " << chk.Message;
+              out << "\n";
+              CheckPassCount++;
+            } else {
+              out << LogFormat::RED << "    CHECK FAIL: " << chk.DisplayString
+                  << " = " << actualValue
+                  << " expected " << chk.ExpectedValue
+                  << " tol " << effectiveTol;
+              if (!chk.Message.empty()) out << " : " << chk.Message;
+              out << LogFormat::RESET << "\n";
+              eventCheckFails++;
+              CheckFailCount++;
+            }
+          }
+
+          // Print event-level result
+          if (eventCheckFails == 0) {
+            out << "  EVENT PASS: " << thisEvent.Name
+                << " (" << eventCheckTotal << " of " << eventCheckTotal
+                << " checks passed)\n";
+          } else {
+            bool eventFailed = true;
+            if (thisEvent.CheckCondition == "or") {
+              // "or" mode: event fails only if ALL checks fail
+              eventFailed = (eventCheckFails == eventCheckTotal);
+            }
+
+            if (eventFailed) {
+              out << LogFormat::RED << "  EVENT FAIL: " << thisEvent.Name
+                  << " (" << eventCheckFails << " of " << eventCheckTotal
+                  << " checks failed)" << LogFormat::RESET << "\n";
+
+              if (thisEvent.HaltOnFailure) {
+                out << LogFormat::RED
+                    << "  HALT: halt-on-failure is set, terminating simulation."
+                    << LogFormat::RESET << "\n";
+                return false;
+              }
+            } else {
+              out << "  EVENT PASS: " << thisEvent.Name
+                  << " (" << (eventCheckTotal - eventCheckFails)
+                  << " of " << eventCheckTotal << " checks passed, or-mode)\n";
+            }
+          }
+        }
+
         out << "\n";
         thisEvent.Notified = true;
       }
@@ -553,6 +741,116 @@ bool FGScript::RunScript(void)
     event_ctr++;
   }
   return true;
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+SGPath FGScript::FindTolerancesFile(const SGPath& scriptDir)
+{
+  // Walk up from the script's directory looking for validation-package/tolerances.xml
+  SGPath dir = scriptDir;
+  for (int depth = 0; depth < 10; depth++) {
+    SGPath candidate = dir / "validation-package" / "tolerances.xml";
+    if (candidate.exists()) {
+      return candidate;
+    }
+    SGPath parent = SGPath(dir.dir());
+    if (parent.str() == dir.str()) break; // reached root
+    dir = parent;
+  }
+  return SGPath(); // not found
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+bool FGScript::LoadTolerances(const SGPath& path)
+{
+  if (TolerancesLoaded) return true;
+
+  FGXMLFileRead XMLFileRead;
+  Element* document = XMLFileRead.LoadXMLDocument(path);
+  if (!document) {
+    FGLogging log(LogLevel::ERROR);
+    log << "Tolerances file could not be loaded: " << path << "\n";
+    return false;
+  }
+
+  {
+    FGLogging log(LogLevel::INFO);
+    log << "Tolerances loaded from: " << path << "\n";
+  }
+
+  Element* gt_elem = document->FindElement("global-tolerances");
+  if (gt_elem) {
+    // Parse tolerance rules
+    Element* tol_elem = gt_elem->FindElement("tolerance");
+    while (tol_elem) {
+      tolerance_rule rule;
+      rule.Pattern = tol_elem->GetAttributeValue("match");
+      if (!tol_elem->GetAttributeValue("tol_abs").empty())
+        rule.TolAbs = tol_elem->GetAttributeValueAsNumber("tol_abs");
+      if (!tol_elem->GetAttributeValue("tol_rel").empty())
+        rule.TolRel = tol_elem->GetAttributeValueAsNumber("tol_rel");
+      ToleranceRules.push_back(rule);
+      tol_elem = gt_elem->FindNextElement("tolerance");
+    }
+
+    // Parse default
+    Element* default_elem = gt_elem->FindElement("default");
+    if (default_elem) {
+      if (!default_elem->GetAttributeValue("tol_abs").empty())
+        DefaultTolAbs = default_elem->GetAttributeValueAsNumber("tol_abs");
+      if (!default_elem->GetAttributeValue("tol_rel").empty())
+        DefaultTolRel = default_elem->GetAttributeValueAsNumber("tol_rel");
+    }
+  }
+
+  TolerancesLoaded = true;
+  return true;
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+void FGScript::ResolveCheckTolerance(check_spec& cs)
+{
+  // If explicit tolerances are set on the <check> element, use those
+  if (cs.TolAbs >= 0.0 || cs.TolRel >= 0.0) return;
+
+  // Try pattern matching against tolerance rules
+  if (TolerancesLoaded) {
+    for (unsigned int i = 0; i < ToleranceRules.size(); i++) {
+      if (pattern_match(ToleranceRules[i].Pattern, cs.Property)) {
+        cs.TolAbs = ToleranceRules[i].TolAbs;
+        cs.TolRel = ToleranceRules[i].TolRel;
+        return;
+      }
+    }
+
+    // Use file default if available
+    if (DefaultTolRel >= 0.0 || DefaultTolAbs >= 0.0) {
+      cs.TolAbs = DefaultTolAbs;
+      cs.TolRel = DefaultTolRel;
+      return;
+    }
+  }
+
+  // Tight fallback default
+  cs.TolAbs = 1e-6;
+}
+
+//%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+void FGScript::PrintCheckSummary(void) const
+{
+  int total = CheckPassCount + CheckFailCount;
+  if (total == 0) return;
+
+  FGLogging log(LogLevel::INFO);
+  log << "\n"
+      << "=====================================================================\n"
+      << "  CHECK SUMMARY: " << CheckPassCount << " passed, "
+      << CheckFailCount << " failed, " << total << " total\n"
+      << "=====================================================================\n";
 }
 
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
