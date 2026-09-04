@@ -723,6 +723,10 @@ bool options(int count, char **arg)
     } else if (keyword == "--outputpath") {
       if (n != string::npos) {
         OutputPath = SGPath::fromLocal8Bit(value.c_str());
+      } else {
+        gripe;
+        exit(1);
+      }
     } else if (keyword == "--aircraft-path") {
       if (n != string::npos) {
         AircraftPathOverride = value;
