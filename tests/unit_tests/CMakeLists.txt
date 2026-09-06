@@ -52,7 +52,10 @@ if(WIN32 AND BUILD_SHARED_LIBS)
   else()
     set(UNIT_TESTS_BIN_DIR ${CMAKE_CURRENT_BINARY_DIR})
   endif()
+  # The directory is created first: on a clean build it does not exist yet,
+  # and copying to a missing directory creates a file of that name instead.
   add_custom_target(copy_jsbsim_dll
+                    COMMAND ${CMAKE_COMMAND} -E make_directory ${UNIT_TESTS_BIN_DIR}
                     COMMAND ${CMAKE_COMMAND} -E copy_if_different
                     $<TARGET_FILE:libJSBSim> ${UNIT_TESTS_BIN_DIR}
                     DEPENDS libJSBSim)
