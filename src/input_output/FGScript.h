@@ -40,6 +40,7 @@ INCLUDES
 #include <vector>
 #include <map>
 #include <memory>
+#include <string>
 
 #include "FGJSBBase.h"
 #include "FGPropertyReader.h"
@@ -157,6 +158,53 @@ CLASS DOCUMENTATION
     to be used are specified in the &quot;use&quot; lines. Next,
     comes the &quot;run&quot; section, where the conditions are
     described in &quot;event&quot; clauses.</p>
+
+    <h4>Checks</h4>
+
+    <p>An event may carry check elements, which compare a property with an
+    expected value when the event fires. The checks are evaluated once per
+    firing, after the set actions, whether or not the event has a notify
+    element. A check passes when the
+    difference is within the absolute tolerance, or within the relative
+    tolerance times the expected value. A check with neither takes its
+    tolerances from the file named by a tolerances element, or from
+    tolerances.xml in the root directory when it exists, or falls back to a
+    tight default. The outcome of each check is printed when the event fires,
+    followed by a line giving the result for the event and the time at which
+    it fired. The checks of an event that never fires are not run, and are
+    listed in the summary at the end of the run. The counts are available as
+    the properties simulation/script/checks-passed, checks-failed and
+    checks-not-run, and the JSBSim executable returns 1 when any check failed
+    or did not run.</p>
+
+    @code
+<runscript name="Level flight check">
+  <use aircraft="c172x" initialize="reset00"/>
+  <run start="0.0" end="60" dt="0.0083333">
+    <event name="check trim">
+      <condition> sim-time-sec >= 30 </condition>
+      <check property="velocities/h-dot-fps" value="0.0" tol_abs="1.0"/>
+      <check property="velocities/vc-kts" value="100.0" tol_rel="0.02"
+             message="cruise speed held"/>
+    </event>
+  </run>
+  <tolerances src="tolerances.xml"/>
+</runscript>
+    @endcode
+
+    <p>The tolerances file holds rules matched against the property name, and
+    a default for properties no rule matches:</p>
+
+    @code
+<tolerances>
+  <global-tolerances>
+    <tolerance match="velocities/*" tol_abs="0.5"/>
+    <tolerance match="attitude/*-rad" tol_abs="0.001"/>
+    <default tol_rel="0.01"/>
+  </global-tolerances>
+</tolerances>
+    @endcode
+
     @author Jon S. Berndt
 */
 
@@ -194,6 +242,22 @@ public:
 
   void ResetEvents(void);
 
+  /** Number of <check> elements that failed so far. Also available as the
+      property simulation/script/checks-failed. */
+  int GetCheckFailCount(void) const { return CheckFailCount; }
+
+  /** Number of <check> elements that passed so far. Also available as the
+      property simulation/script/checks-passed. */
+  int GetCheckPassCount(void) const { return CheckPassCount; }
+
+  /** Number of <check> elements on events that have not fired. Also available
+      as the property simulation/script/checks-not-run. */
+  int GetCheckNotRunCount(void) const;
+
+  /** Print a summary of the check results, if the script has any, naming the
+      events whose checks did not run. */
+  void PrintCheckSummary(void) const;
+
 private:
   enum eAction {
     FG_RAMP  = 1,
@@ -207,6 +271,27 @@ private:
     FG_BOOL  = 3
   };
 
+  /** Specification for a single <check> element of an <event>. */
+  struct check_spec {
+    std::string Property;      ///< Property path to read
+    std::string DisplayString; ///< Caption override for output
+    std::string Message;       ///< Custom message on output
+    double ExpectedValue;      ///< Expected numeric value
+    double TolAbs;             ///< Absolute tolerance (-1.0 = unspecified)
+    double TolRel;             ///< Relative tolerance (-1.0 = unspecified)
+
+    check_spec() : ExpectedValue(0.0), TolAbs(-1.0), TolRel(-1.0) {}
+  };
+
+  /** Tolerance rule from the tolerances file. */
+  struct tolerance_rule {
+    std::string Pattern;       ///< fnmatch-style pattern
+    double TolAbs;             ///< Absolute tolerance (-1.0 = unspecified)
+    double TolRel;             ///< Relative tolerance (-1.0 = unspecified)
+
+    tolerance_rule() : TolAbs(-1.0), TolRel(-1.0) {}
+  };
+
   struct event {
     FGCondition     *Condition;
     bool             Persistent;
@@ -215,6 +300,8 @@ private:
     bool             Notify;
     bool             NotifyKML;
     bool             Notified;
+    bool             Checked;    // The checks ran for the current firing.
+    bool             ChecksRun;  // The checks have run at least once; reset() keeps it.
     double           Delay;
     double           StartTime;
     double           TimeSpan;
@@ -233,6 +320,7 @@ private:
     std::vector <double>  ValueSpan;
     std::vector <bool>    Transiting;
     std::vector <FGFunction*> Functions;
+    std::vector <check_spec> CheckSpecs;
 
     event() {
       Triggered = false;
@@ -240,6 +328,7 @@ private:
       Continuous = false;
       Delay = 0.0;
       Notify = Notified = NotifyKML = false;
+      Checked = ChecksRun = false;
       Name = "";
       StartTime = 0.0;
       TimeSpan = 0.0;
@@ -248,6 +337,7 @@ private:
     void reset(void) {
       Triggered = false;
       Notified = false;
+      Checked = false;
       StartTime = 0.0;
     }
   };
@@ -261,6 +351,18 @@ private:
 
   FGFDMExec* FDMExec;
   std::shared_ptr<FGPropertyManager> PropertyManager;
+
+  // Tolerance support for <check> elements
+  bool TolerancesLoaded;
+  int CheckFailCount;
+  int CheckPassCount;
+  std::vector<tolerance_rule> ToleranceRules;
+  double DefaultTolAbs;
+  double DefaultTolRel;
+
+  bool LoadTolerances(const SGPath& path);
+  void ResolveCheckTolerance(check_spec& cs);
+
   void Debug(int from);
 };
 }

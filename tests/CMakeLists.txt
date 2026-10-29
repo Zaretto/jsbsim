@@ -21,6 +21,7 @@ set(PYTHON_TESTS ResetOutputFiles
                  TestTurbulenceGustStop
                  TestTurbulenceTustin
                  TestScriptOutput
+                 TestScriptCheck
                  CheckSimTimeReset
                  TestHoldDown
                  CheckTrim

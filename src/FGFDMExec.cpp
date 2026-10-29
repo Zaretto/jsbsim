@@ -733,6 +733,9 @@ vector <string> FGFDMExec::EnumerateFDMs(void)
 bool FGFDMExec::LoadScript(const SGPath& script, double deltaT,
                            const SGPath& initfile)
 {
+  // Release the current script before constructing the new one so that the
+  // properties it owns are untied before the new script ties them.
+  Script.reset();
   Script = std::make_shared<FGScript>(this);
   return Script->LoadScript(GetFullPath(script), deltaT, initfile);
 }
